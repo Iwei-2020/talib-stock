@@ -1,0 +1,407 @@
+name: CI
+
+"on":
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+env:
+  # Latest stable Python version - update this when new Python versions are released
+  # This value controls the rolling 5-version support policy (LATEST-4 through LATEST)
+  # Used by generate-matrix job to compute supported Python versions dynamically
+  # Also used for pyproject.toml placeholder replacement: {{LATEST-N}} → actual versions
+  LATEST_PYTHON_VERSION: "3.14"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  # Job 1: Code quality checks (linting and formatting)
+  code-quality:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      with:
+        fetch-depth: 0  # Full history needed for setuptools-scm
+
+    - name: Set up Python
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+      with:
+        python-version: ${{ env.LATEST_PYTHON_VERSION }}
+
+    - name: Install dependencies and quality tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[lint]"
+
+    - name: Display package version from git
+      run: |
+        VERSION=$(python -c "import pandas_ta_classic as ta; print(ta.version)")
+        echo "Package Version: $VERSION"
+        echo "### Package Version" >> $GITHUB_STEP_SUMMARY
+        echo "**$VERSION**" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+    
+    - name: Check code formatting with black
+      run: |
+        black --check --diff pandas_ta_classic/
+    
+    - name: Run Ruff linting
+      run: |
+        # Blocking gate over the whole repo: ruff's default rule set plus ICN,
+        # configured in pyproject's [tool.ruff.lint].
+        ruff check .
+        # Advisory only: complexity and line length, never fails the build
+        ruff check pandas_ta_classic --extend-select C901,E501 --exit-zero
+
+    - name: Verify core.pyi is in sync with generator
+      run: |
+        python tools/gen_core_stub.py
+        ruff check --fix --quiet pandas_ta_classic/core.pyi
+        black --quiet pandas_ta_classic/core.pyi
+        git diff --exit-code pandas_ta_classic/core.pyi
+
+    - name: Type-check with mypy
+      # Targets Python 3.12 (see the Makefile): numpy >= 2.5 stubs need it.
+      run: make typecheck PYTHON=python
+
+    - name: Verify black/ruff versions match .pre-commit-config.yaml
+      run: python tools/check_lint_versions.py
+
+  # Job 2: Generate Python version matrix dynamically
+  # Computes 5 Python versions (LATEST and 4 previous minor versions) from LATEST_PYTHON_VERSION
+  # These versions are used for:
+  #   - testing job: testing across all supported Python versions
+  #   - pypi-publish job: replacing {{LATEST-N}} placeholders in pyproject.toml
+  generate-matrix:
+    runs-on: ubuntu-latest
+    needs: code-quality
+    outputs:
+      python-versions: ${{ steps.versions.outputs.python-versions }}
+    
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      with:
+        fetch-depth: 0  # Full history needed for setuptools-scm
+
+    - name: Generate Python version matrix
+      id: versions
+      run: |
+        # Extract minor version from LATEST_PYTHON_VERSION (e.g., "3.14" -> "14")
+        latest="${{ env.LATEST_PYTHON_VERSION }}"
+        minor_version=$(echo "$latest" | cut -d'.' -f2)
+        
+        # Generate 5 versions: latest and 4 previous minor versions
+        versions="["
+        for i in {4..0}; do
+          version_num=$((minor_version - i))
+          if [ $i -eq 0 ]; then
+            versions="${versions}\"3.${version_num}\""
+          else
+            versions="${versions}\"3.${version_num}\", "
+          fi
+        done
+        versions="${versions}]"
+        
+        echo "python-versions=$versions" >> $GITHUB_OUTPUT
+        echo "Generated Python versions: $versions"
+
+
+  # Job 4: Core Testing - Run non-oracle tests on all dynamically generated Python versions
+  testing-core:
+    runs-on: ubuntu-latest
+    needs: [code-quality, generate-matrix]
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ${{ fromJson(needs.generate-matrix.outputs.python-versions) }}
+    
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      with:
+        fetch-depth: 0  # Full history needed for setuptools-scm
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        # Install package, test stack, and optional oracle libs.
+        # Some non-oracle tests branch on talib availability.
+        pip install -e ".[test,oracle]"
+
+    - name: Run core tests (exclude oracle suites)
+      run: |
+        python -m pytest tests/ \
+          --ignore=tests/test_oracle_talib.py \
+          --ignore=tests/test_oracle_tulipy.py -v
+
+    - name: Verify package import
+      run: |
+        python -c "import pandas_ta_classic as ta; print('Package imported successfully on Python ${{ matrix.python-version }}')"
+
+  # Job 5: Oracle Testing - Run talib/tulipy parity tests on all supported Python versions
+  testing-oracle:
+    runs-on: ubuntu-latest
+    needs: [code-quality, generate-matrix]
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ${{ fromJson(needs.generate-matrix.outputs.python-versions) }}
+
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      with:
+        fetch-depth: 0  # Full history needed for setuptools-scm
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        # Install package, test stack, and oracle libraries from pyproject.toml extras
+        pip install -e ".[test,oracle]"
+
+    - name: Verify oracle dependencies import
+      run: |
+        # tulipy is unmaintained (no wheels for CPython >=3.12); its oracle
+        # values are frozen in tests/fixtures/tulipy_oracle.json, so no tulipy
+        # install is needed at test time. Only talib is imported live here.
+        python - << 'PY'
+        import talib
+        print(f"talib import OK: {talib.__name__}")
+        PY
+
+    - name: Run oracle test suites (talib + tulipy)
+      run: |
+        python -m pytest tests/test_oracle_talib.py tests/test_oracle_tulipy.py -v
+
+  # Job 6: Documentation - Build and deploy documentation (independent deployment)
+  documentation:
+    runs-on: ubuntu-latest
+    needs: [code-quality, generate-matrix, testing-core, testing-oracle]
+    if: github.event_name == 'push'
+    concurrency:
+      group: "pages"
+      cancel-in-progress: false
+    environment:
+      name: docs-production
+      url: ${{ steps.deployment.outputs.page_url }}
+    
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      with:
+        fetch-depth: 0  # Full history needed for setuptools-scm
+    
+    - name: Set up Python
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+      with:
+        python-version: ${{ env.LATEST_PYTHON_VERSION }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[docs]"
+    
+    - name: Setup Pages
+      uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d  # v6
+          
+    - name: Build Sphinx documentation
+      run: |
+        cd docs
+        make html
+        
+    - name: Upload Pages artifact (Sphinx)
+      uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5
+      with:
+        path: docs/_build/html
+
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346  # v5
+
+  # Job 7: PyPI Publishing - Build and publish to PyPI (on release published with unique version)
+  # This job handles placeholder replacement in pyproject.toml:
+  #   1. Version is automatically determined by setuptools-scm from git tags (no manual replacement needed)
+  #   2. Replaces {{LATEST-N}} placeholders with actual Python versions from matrix
+  #   3. Replaces requires-python = ">=3.{{LATEST-4}}" with actual minimum version
+  #   4. Preserves Development Status :: 5 - Production/Stable and all other classifiers
+  pypi-publish:
+    runs-on: ubuntu-latest
+    needs: [code-quality, generate-matrix, testing-core, testing-oracle]
+    if: github.event_name == 'release' && github.event.action == 'published'
+    permissions:
+      contents: write        # only this job may push; needed to push the branch below
+      pull-requests: write   # needed to open the requires-python bump PR below
+    environment:
+      name: pypi-production
+      url: https://pypi.org/project/pandas-ta-classic/
+
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      with:
+        fetch-depth: 0  # Full history needed for setuptools-scm
+    
+    - name: Validate release version uniqueness
+      run: |
+        # Get the new release version
+        RELEASE_TAG="${{ github.event.release.tag_name }}"
+        NEW_VERSION="${RELEASE_TAG#v}"  # Remove 'v' prefix if present
+        
+        echo "New release version: $NEW_VERSION"
+        
+        # Get all existing releases
+        EXISTING_RELEASES=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+          "https://api.github.com/repos/${{ github.repository }}/releases" | \
+          jq -r '.[].tag_name')
+        
+        echo "Existing releases:"
+        echo "$EXISTING_RELEASES"
+        
+        # Check if this version already exists (excluding the current release)
+        CURRENT_RELEASE_ID="${{ github.event.release.id }}"
+        DUPLICATE_VERSION=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+          "https://api.github.com/repos/${{ github.repository }}/releases" | \
+          jq -r --arg version "$RELEASE_TAG" --arg current_id "$CURRENT_RELEASE_ID" \
+          '.[] | select(.tag_name == $version and (.id | tostring) != $current_id) | .tag_name')
+        
+        if [ -n "$DUPLICATE_VERSION" ]; then
+          echo "Error: Version $RELEASE_TAG already exists in another release!"
+          echo "Please use a unique version number."
+          exit 1
+        fi
+        
+        # Also check PyPI for existing versions
+        echo "Checking PyPI for existing versions..."
+        PYPI_VERSIONS=$(curl -s "https://pypi.org/pypi/pandas-ta-classic/json" | \
+          jq -r '.releases | keys[]' 2>/dev/null || echo "")
+        
+        if echo "$PYPI_VERSIONS" | grep -q "^$NEW_VERSION$"; then
+          echo "Error: Version $NEW_VERSION already exists on PyPI!"
+          echo "Please use a unique version number."
+          exit 1
+        fi
+        
+        echo "Version $NEW_VERSION is unique and ready for release!"
+    
+    - name: Set up Python
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+      with:
+        python-version: ${{ env.LATEST_PYTHON_VERSION }}
+    
+    - name: Update pyproject.toml with dynamic Python classifiers
+      # Replaces all {{LATEST-N}} placeholders in pyproject.toml with actual Python versions
+      # This includes:
+      #   - Programming Language :: Python :: {{LATEST-4}} → 3.10
+      #   - Programming Language :: Python :: {{LATEST-3}} → 3.11
+      #   - Programming Language :: Python :: {{LATEST-2}} → 3.12
+      #   - Programming Language :: Python :: {{LATEST-1}} → 3.13
+      #   - Programming Language :: Python :: {{LATEST}} → 3.14
+      #   - requires-python: Updates minimum version if it changes
+      # Preserves all other classifiers including Development Status :: 5 - Production/Stable
+      run: |
+        python - << 'PY'
+        import json, os, re
+        vs = json.loads(os.environ.get('PYTHON_VERSIONS', '[]'))
+        with open('pyproject.toml') as f:
+            t = f.read()
+        for i, v in enumerate(vs):
+            t = t.replace('{{LATEST-' + str(len(vs) - 1 - i) + '}}', v)
+        t = t.replace('{{LATEST}}', vs[-1])
+        lines = [re.sub(r'>=\s*3\.\d+', f'>={vs[0]}', l) if 'requires-python' in l else l for l in t.splitlines(True)]
+        with open('pyproject.toml', 'w') as f:
+            f.writelines(lines)
+        PY
+      env:
+        PYTHON_VERSIONS: ${{ needs.generate-matrix.outputs.python-versions }}
+    
+    - name: Set version environment variable
+      run: |
+        # Extract version from the release tag (remove 'v' prefix if present)
+        RELEASE_TAG="${{ github.event.release.tag_name }}"
+        VERSION="${RELEASE_TAG#v}"
+        echo "SETUPTOOLS_SCM_PRETEND_VERSION=$VERSION" >> $GITHUB_ENV
+        echo "Will build with version: $VERSION"
+    
+    - name: Install build dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install ".[publish]"
+    
+    - name: Build package
+      run: python -m build --wheel
+    
+    - name: Check package
+      run: twine check dist/*
+    
+    - name: Publish to PyPI
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+      run: twine upload dist/*
+
+    - name: Open PR to persist requires-python floor
+      # The wheel-building steps above never touch the repository, so the
+      # committed requires-python goes stale each time LATEST_PYTHON_VERSION
+      # advances. Open a PR (never push main directly) with that one-line bump;
+      # {{LATEST-N}} classifier placeholders are re-resolved at every release.
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        NEW_FLOOR="${{ fromJson(needs.generate-matrix.outputs.python-versions)[0] }}"
+
+        # Checkout is the release tag (detached HEAD) with pyproject.toml
+        # dirtied by the classifier-patching step; -f -B resets to clean main.
+        git fetch origin main
+        git checkout -f -B main origin/main
+
+        CURRENT=$(grep -oP 'requires-python = ">=\K[0-9]+\.[0-9]+' pyproject.toml)
+        if [ "$CURRENT" = "$NEW_FLOOR" ]; then
+          echo "requires-python already >=$NEW_FLOOR on main, nothing to persist."
+          exit 0
+        fi
+
+        # Existing branch = a PR for this floor is open, or was closed without
+        # merging (a maintainer decision not to take the bump). Either way,
+        # skip — never reopen.
+        BRANCH="chore/requires-python-$NEW_FLOOR"
+        if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+          echo "Branch $BRANCH already exists on origin, skipping (PR likely already open)."
+          exit 0
+        fi
+
+        sed -i "s/requires-python = \">=$CURRENT\"/requires-python = \">=$NEW_FLOOR\"/" pyproject.toml
+        # sed exits 0 even when it replaces nothing; fail by name instead of
+        # letting `git commit` die later with a cryptic "nothing to commit".
+        if git diff --quiet pyproject.toml; then
+          echo "sed did not update requires-python — pattern in pyproject.toml drifted from this script's expectation." >&2
+          exit 1
+        fi
+
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git checkout -b "$BRANCH"
+        git add pyproject.toml
+        git commit -m "chore: bump requires-python floor to >=$NEW_FLOOR"
+        # Push auth: credentials persisted by actions/checkout + this job's
+        # `contents: write`; gh auth: GH_TOKEN + `pull-requests: write`.
+        git push origin "$BRANCH"
+
+        gh pr create \
+          --base main \
+          --head "$BRANCH" \
+          --title "chore: bump requires-python floor to >=$NEW_FLOOR" \
+          --body "Automated follow-up to release ${{ github.event.release.tag_name }}. The supported Python matrix (generate-matrix job) now starts at $NEW_FLOOR; this brings \`requires-python\` in pyproject.toml back in sync so it doesn't silently drift stale until the next manual edit."

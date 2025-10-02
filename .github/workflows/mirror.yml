@@ -1,0 +1,29 @@
+name: Mirror to Codeberg
+
+on:
+  push:
+  schedule:
+    - cron: "0 0 * * *"
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        with:
+          fetch-depth: 0
+
+      - name: Push mirror
+        # Codeberg is a read-only mirror of GitHub — nothing should ever be
+        # pushed there directly. --force is intentional: it makes GitHub the
+        # sole source of truth and keeps the mirror in lockstep even across a
+        # history rewrite on GitHub's side. If Codeberg ever needs to hold
+        # commits GitHub doesn't have, this job will silently discard them.
+        run: |
+          git config http.postBuffer 524288000
+          git remote add codeberg https://USER:${{ secrets.CODEBERG_TOKEN }}@codeberg.org/xgboosted/pandas-ta-classic.git
+          for i in 1 2 3; do
+            git push --all --force codeberg && break || sleep 10
+          done
+          git push --tags --force codeberg
