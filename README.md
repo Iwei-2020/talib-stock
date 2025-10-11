@@ -1,1 +1,257 @@
-# talib-stock
+<p align="center">
+ <a href="https://github.com/xgboosted/pandas-ta-classic">
+ <img src="https://raw.githubusercontent.com/xgboosted/pandas-ta-classic/main/docs/images/logo.png" width="150" height="150" alt="Pandas TA Classic">
+ </a>
+</p>
+
+# Pandas TA Classic - Technical Analysis Library
+
+[![License](https://img.shields.io/github/license/xgboosted/pandas-ta-classic?style=flat)](https://github.com/xgboosted/pandas-ta-classic/blob/main/LICENSE)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/xgboosted/pandas-ta-classic/ci.yml?branch=main&style=flat)](https://github.com/xgboosted/pandas-ta-classic/actions/workflows/ci.yml)
+[![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://xgboosted.github.io/pandas-ta-classic/)
+[![Python Version](https://img.shields.io/pypi/pyversions/pandas-ta-classic?style=flat)](https://pypi.org/project/pandas-ta-classic/)
+[![PyPI Version](https://img.shields.io/pypi/v/pandas-ta-classic?style=flat)](https://pypi.org/project/pandas-ta-classic/)
+[![Package Status](https://img.shields.io/pypi/status/pandas-ta-classic?style=flat)](https://pypi.org/project/pandas-ta-classic/)
+[![Downloads](https://img.shields.io/pypi/dm/pandas-ta-classic?style=flat)](https://pypistats.org/packages/pandas-ta-classic)
+[![Stars](https://img.shields.io/github/stars/xgboosted/pandas-ta-classic?style=flat)](https://github.com/xgboosted/pandas-ta-classic/stargazers)
+[![Forks](https://img.shields.io/github/forks/xgboosted/pandas-ta-classic?style=flat)](https://github.com/xgboosted/pandas-ta-classic/forks)
+[![Dependents](https://img.shields.io/librariesio/dependents/pypi/pandas-ta-classic?style=flat)](https://libraries.io/pypi/pandas-ta-classic/dependents)
+[![Contributors](https://img.shields.io/github/contributors/xgboosted/pandas-ta-classic?style=flat)](https://github.com/xgboosted/pandas-ta-classic/graphs/contributors)
+
+![Example Chart](https://raw.githubusercontent.com/xgboosted/pandas-ta-classic/main/docs/images/TA_Chart.png)
+
+> **Pandas TA Classic** is an easy-to-use library that leverages the Pandas package with **224 indicators and utility functions** and **62 native candlestick patterns** (**284 total unique** — no TA-Lib required). Many commonly used indicators are included, such as: _Simple Moving Average_ (**sma**), _Moving Average Convergence Divergence_ (**macd**), _Hull Exponential Moving Average_ (**hma**), _Bollinger Bands_ (**bbands**), _On-Balance Volume_ (**obv**), _Aroon & Aroon Oscillator_ (**aroon**), _Squeeze_ (**squeeze**) and **many more**.
+
+This is the **classic/community maintained version** of the popular pandas-ta library.
+
+## New to Pandas TA Classic?
+
+**Get started quickly with our comprehensive guides:**
+
+- **[Quickstart Guide](https://github.com/xgboosted/pandas-ta-classic/blob/main/docs/quickstart.md)** - Installation, your first indicators, and common workflows
+- **[Tutorials](https://github.com/xgboosted/pandas-ta-classic/blob/main/docs/tutorials.md)** - Step-by-step tutorials for real-world use cases:
+ - Moving Average Crossover Strategy
+ - Building Custom Indicator Strategies 
+ - Backtesting with Performance Metrics
+ - Integrating with backtesting.py
+ - Integrating with backtrader
+ - Integrating with VectorBT
+ - Integrating with manifoldbt
+ - Multi-Timeframe Analysis
+ - Creating Custom Indicators
+ - Candlestick Pattern Recognition
+
+**Complete documentation:** [**https://xgboosted.github.io/pandas-ta-classic/**](https://xgboosted.github.io/pandas-ta-classic/)
+
+### Key Features
+
+- **284 Unique Indicators & Patterns**: 224 Category indicators + 62 CDL patterns via `cdl_pattern()` = 284 unique (doji and inside appear in both counts; all CDL patterns use native Python — no TA-Lib required)
+- **All-Native Candlestick Patterns**: All 62 CDL patterns have native Python implementations — TA-Lib is never used for CDL patterns
+- **Optional TA-Lib Acceleration**: Core indicators (EMA, SMA, RSI, MACD, OBV, ATR, etc.) use native implementations by default; pass `talib=True` to use TA-Lib
+- **Compatibility Scope Is Explicit**: Not every TA-Lib/tulipy function has a pandas-ta-classic counterpart. See the full per‑indicator matrix for current coverage: `docs/indicator_support_matrix.rst`
+- **Optional Performance Boost**: Install `numba` for 6–230× speedups on hot-loop indicators (QQE, RSX, HWMA, SSF, PSAR, Supertrend, MCGD)
+- **Automatic Versioning**: Version management via git tags using setuptools-scm
+- **Modern Package Management**: Full support for both `uv` and `pip`
+- **Production Ready**: Stable status with comprehensive test coverage including property-based testing (Hypothesis)
+- **Active Development**: Regular updates with community contributions
+
+## Quick Start
+
+### Installation
+
+The library supports both modern **uv** and traditional **pip** package managers.
+
+**Stable Release**
+
+Using `uv` (recommended - faster):
+```bash
+uv pip install pandas-ta-classic
+```
+
+Using `pip`:
+```bash
+pip install pandas-ta-classic
+```
+
+**Latest Version**
+
+Using `uv`:
+```bash
+uv pip install git+https://github.com/xgboosted/pandas-ta-classic
+```
+
+Using `pip`:
+```bash
+pip install -U git+https://github.com/xgboosted/pandas-ta-classic
+```
+
+**Development Installation**
+
+Using `uv`:
+```bash
+# Clone the repository
+git clone https://github.com/xgboosted/pandas-ta-classic.git
+cd pandas-ta-classic
+
+# Install with all core dependencies (excludes the platform-fragile
+# backtest extra — install it explicitly if needed)
+uv pip install -e ".[all]"
+
+# Or install specific dependency groups:
+uv pip install -e ".[dev]" # Development tools
+uv pip install -e ".[optional]" # Optional runtime features
+uv pip install -e ".[oracle]" # Oracle parity lib: TA-Lib
+uv pip install -e ".[backtest]" # Backtesting: backtesting, vectorbt, backtrader
+```
+
+Using `pip`:
+```bash
+# Clone the repository
+git clone https://github.com/xgboosted/pandas-ta-classic.git
+cd pandas-ta-classic
+
+# Install with all core dependencies (excludes the platform-fragile
+# backtest extra — install it explicitly if needed)
+pip install -e ".[all]"
+
+# Or install specific dependency groups:
+pip install -e ".[dev]" # Development tools
+pip install -e ".[optional]" # Optional runtime features
+pip install -e ".[oracle]" # Oracle parity lib: TA-Lib
+pip install -e ".[backtest]" # Backtesting: backtesting, vectorbt, backtrader
+```
+
+### Basic Usage
+
+```python
+import pandas as pd
+import pandas_ta_classic as ta
+
+# Load your data
+df = pd.read_csv("path/to/symbol.csv")
+# OR fetch OHLCV with yfinance directly (pandas-ta-classic does not fetch data;
+# see examples/fetch_market_data.py):
+# import yfinance as yf
+# df = yf.download("AAPL", period="1y")
+
+# Calculate indicators
+df.ta.sma(length=20, append=True) # Simple Moving Average
+df.ta.rsi(append=True) # Relative Strength Index 
+df.ta.macd(append=True) # MACD
+df.ta.bbands(append=True) # Bollinger Bands
+
+# Fluent API chaining (v0.6+)
+df.ta.chain().sma(20).ta.rsi(14).ta.macd().ta.bbands(20)
+
+# Or run a strategy with multiple indicators
+df.ta.strategy("CommonStrategy") # Runs commonly used indicators
+```
+
+## Features
+
+- **224 Technical Indicators & Utilities** across 10 categories (Candles, Cycles, Math, Momentum, Overlap, Trend, Volume, etc.)
+- **62 Native Candlestick Patterns** — all patterns natively implemented, no TA-Lib required
+- **284 Unique Indicators & Patterns** - 224 category indicators plus 62 CDL patterns via `cdl_pattern()`
+- **Dynamic Category Discovery** - automatically detects all available indicators from the filesystem
+- **Optional Numba Acceleration** - 6–230× speedups via `pip install pandas-ta-classic[performance]`
+- **Strategy System** with multiprocessing support for bulk indicator processing
+- **Fluent API Chaining**: ``df.ta.chain().sma(20).ta.rsi(14).ta.macd().ta.bbands(20)`` — chain multiple indicators in a single expression
+- **Pandas DataFrame Extension** for seamless integration (`df.ta.<indicator>()`, e.g. `df.ta.rsi()`)
+- **TA-Lib Integration (dual-role)** - **(1) acceleration backend**: core indicators use native implementations by default; pass `talib=True` to use TA-Lib's C implementation. **(2) oracle**: `test_oracle_talib.py` verifies parity against TA-Lib
+- **tulipy Integration (frozen oracle only)** - `test_oracle_tulipy.py` verifies native output against a committed golden snapshot of tulipy's output (`tests/fixtures/tulipy_oracle.json`); tulipy itself is no longer installed at test time, only to regenerate the snapshot; never used as a computation backend
+- **Backtesting.py Integration** — bridge function and runnable SMA crossover example in ``examples/backtesting_py_strategy.py``
+- **backtrader Integration** — precompute-then-feed pattern with dynamic `PandasData` subclass; runnable example in ``examples/backtrader_strategy.py``
+- **Vectorbt Integration** - compatible with popular backtesting framework
+- **manifoldbt Integration** - precompute-then-register pattern using exogenous series; runnable example in ``examples/manifoldbt_strategy.py``
+- **Custom Indicators** - easily create and chain your own indicators
+
+## Documentation
+
+**Complete documentation is available at:** [**https://xgboosted.github.io/pandas-ta-classic/**](https://xgboosted.github.io/pandas-ta-classic/)
+
+### Learning Resources
+
+**Start Here:**
+- [**Quickstart Guide**](https://github.com/xgboosted/pandas-ta-classic/blob/main/docs/quickstart.md) - Get up and running in minutes
+- [**Tutorials**](https://github.com/xgboosted/pandas-ta-classic/blob/main/docs/tutorials.md) - Step-by-step guides for common workflows
+- [**Examples**](https://github.com/xgboosted/pandas-ta-classic/tree/main/examples) - Jupyter notebooks with real examples
+
+**Reference Documentation:**
+- [**Usage Guide**](https://xgboosted.github.io/pandas-ta-classic/usage.html) - Programming conventions and basic usage
+- [**Strategy System**](https://xgboosted.github.io/pandas-ta-classic/strategies.html) - Multiprocessing and bulk indicator processing 
+- [**Indicators Reference**](https://xgboosted.github.io/pandas-ta-classic/indicators.html) - Complete list of 224 indicators plus 62 CDL patterns (284 unique total)
+- [**DataFrame API**](https://xgboosted.github.io/pandas-ta-classic/dataframe_api.html) - Properties and methods reference
+- [**Performance Metrics**](https://xgboosted.github.io/pandas-ta-classic/performance.html) - Backtesting and performance analysis
+
+## Python Version Support
+
+**Pandas TA Classic** follows a **rolling support policy** for the latest stable Python version plus 4 preceding minor versions.
+
+> **Note:** Python version support is **dynamically managed** via CI/CD workflows. When new Python versions are released, the library automatically updates to support the latest 5 minor versions. Check the [CI workflow](https://github.com/xgboosted/pandas-ta-classic/blob/main/.github/workflows/ci.yml) `LATEST_PYTHON_VERSION` for the current configuration.
+
+**TA-Lib and tulipy serve different roles** — both are fully optional and skip gracefully when not installed.
+
+| Library | Role | Effect when installed |
+|---------|------|-----------------------|
+| TA-Lib | **Acceleration backend + live oracle** | Core indicators — native by default, opt-in via `talib=True`; also used live in `test_oracle_talib.py` for parity checks |
+| tulipy | **Frozen oracle only** | Not a computation backend and not installed at test time; `test_oracle_tulipy.py` compares against a committed golden snapshot of tulipy's output. tulipy is only needed to *regenerate* that snapshot (CPython <3.12) |
+
+| Area | Behaviour without TA-Lib | Behaviour with TA-Lib |
+|------|--------------------------|----------------------|
+| CDL patterns (62) | Native Python — always used | Still native — TA-Lib **never** used for patterns |
+| Core indicators (59) | Native Python (default) | TA-Lib available via `talib=True` |
+
+```python
+# CDL patterns — always native, no TA-Lib needed
+df.ta.cdl_pattern(name="all") # run all 62 patterns
+df.ta.cdl_pattern(name="engulfing") # individual pattern
+
+# Core indicators — native by default
+df.ta.ema(length=20) # native implementation
+df.ta.ema(length=20, talib=True) # use TA-Lib
+```
+
+Installing oracle libraries:
+```bash
+# uv
+uv pip install pandas-ta-classic[oracle] # installs TA-Lib (the live oracle)
+uv pip install TA-Lib # TA-Lib only (also enables acceleration backend)
+# pip
+pip install pandas-ta-classic[oracle] # installs TA-Lib (the live oracle)
+pip install TA-Lib # TA-Lib only (also enables acceleration backend)
+# tulipy is only needed to regenerate the frozen oracle snapshot (CPython <3.12):
+pip install tulipy && python tests/fixtures/generate_tulipy_oracle.py
+```
+
+> **Note:** `test_oracle_talib.py` skips automatically (`@unittest.skipUnless`) when TA-Lib is not installed. `test_oracle_tulipy.py` runs on every Python version against the committed `tulipy_oracle.json` snapshot (skips only if that fixture is missing) — it does **not** require tulipy installed. Neither is required for normal use. Installing TA-Lib additionally enables C-library acceleration for core indicators via `talib=True`.
+
+**Performance boost:** Install `numba` for 6–230× speedups on computation-heavy indicators:
+- Using `uv`: `uv pip install pandas-ta-classic[performance]`
+- Using `pip`: `pip install pandas-ta-classic[performance]`
+
+## Contributing
+
+We welcome contributions! Please see our [contributing guidelines](https://github.com/xgboosted/pandas-ta-classic/blob/main/CONTRIBUTING.md) and [issues page](https://github.com/xgboosted/pandas-ta-classic/issues).
+
+### Reporting Issues
+- Check [existing issues](https://github.com/xgboosted/pandas-ta-classic/issues) first
+- Provide reproducible code examples 
+- Include relevant error messages and data samples
+
+## Changelog
+
+For detailed information about changes, improvements, and new features, please see the [CHANGELOG.md](https://github.com/xgboosted/pandas-ta-classic/blob/main/CHANGELOG.md) file.
+
+## Sources
+
+[Original TA-LIB](http://ta-lib.org/) | [TradingView](http://www.tradingview.com) | [Sierra Chart](https://search.sierrachart.com/?Query=indicators&submitted=true) | [MQL5](https://www.mql5.com) | [FM Labs](https://www.fmlabs.com/reference/default.htm) | [Pro Real Code](https://www.prorealcode.com/prorealtime-indicators) | [User 42](https://user42.tuxfamily.org/chart/manual/index.html)
+
+## Support
+
+If you find this library helpful, please consider:
+
+[![Sponsor](https://img.shields.io/static/v1?label=Sponsor&message=%E2%9D%A4&logo=GitHub&color=%23fe8e86)](https://github.com/sponsors/xgboosted)
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](https://github.com/xgboosted/pandas-ta-classic/blob/main/LICENSE) file for details.
