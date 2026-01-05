@@ -1,0 +1,120 @@
+# Candle Doji (CDL_DOJI)
+from typing import Any
+
+from pandas import Series
+
+from pandas_ta_classic.overlap.sma import sma
+from pandas_ta_classic.utils import (
+    apply_fill,
+    apply_offset,
+    get_offset,
+    non_zero_range,
+    verify_series,
+)
+from pandas_ta_classic.utils._core import _bool_param, _number, _pos_int, nan_on_short_input
+
+
+@nan_on_short_input
+def cdl_doji(
+    open_: Series,
+    high: Series,
+    low: Series,
+    close: Series,
+    length: int | None = None,
+    factor: float | None = None,
+    scalar: float | None = None,
+    asint: bool = True,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: Candle Type - Doji"""
+    # Validate Arguments
+    length = _pos_int(length, 10, "length")
+    asint = _bool_param(asint, True, "asint")
+    factor = _number(factor, 10, "factor", ge=0)
+    scalar = _number(scalar, 100, "scalar")
+    open_ = verify_series(open_, length)
+    high = verify_series(high, length)
+    low = verify_series(low, length)
+    close = verify_series(close, length)
+    offset = get_offset(offset)
+    naive = _bool_param(kwargs.pop("naive", None), False, "naive")
+
+    if open_ is None or high is None or low is None or close is None:
+        return None
+
+    # Calculate Result
+    # TA-Lib averages the HL range of the *previous* ``length`` bars
+    # (excluding the current bar), so shift the SMA by 1.
+    body = non_zero_range(close, open_).abs()
+    hl_range = non_zero_range(high, low).abs()
+    # Average the previous ``length`` finite bars, as if NaN rows were dropped:
+    # a row resample() inserts for a missing session would otherwise leave the
+    # next ``length`` averages NaN, and weekend gaps keep every average NaN.
+    finite = open_.notna() & high.notna() & low.notna() & close.notna()
+    hl_range_avg = sma(hl_range[finite], length)
+    if hl_range_avg is None:
+        return None
+    hl_range_avg = hl_range_avg.shift(1).reindex(close.index)
+    doji = body <= 0.01 * factor * hl_range_avg
+
+    if naive:
+        # sma(...).shift(1) produces NaN at indices 0..length (length+1 NaN),
+        # so the naive fallback must cover that full range. Use .to_numpy() on
+        # the RHS so pandas doesn't complain about mismatched slice lengths.
+        naive_vals = (body <= 0.01 * factor * hl_range).to_numpy()
+        doji.iloc[: length + 1] = naive_vals[: length + 1]
+    if asint:
+        doji = scalar * doji.astype(int)
+
+    # Offset
+    doji = apply_offset(doji, offset)
+
+    doji = apply_fill(doji, **kwargs)
+
+    # Name and Categorize it
+    doji.name = f"CDL_DOJI_{length}_{0.01 * factor}"
+    doji.category = "candles"
+
+    return doji
+
+
+cdl_doji.__doc__ = """Candle Type: Doji
+
+A candle body is Doji, when it's shorter than 10% of the
+average of the 10 previous candles' high-low range.
+
+Sources:
+    TA-Lib: 96.56% Correlation
+
+Calculation:
+    Default values:
+        length=10, percent=10 (0.1), scalar=100
+    ABS = Absolute Value
+    SMA = Simple Moving Average
+
+    BODY = ABS(close - open)
+    HL_RANGE = ABS(high - low)
+
+    DOJI = scalar IF BODY < 0.01 * percent * SMA(HL_RANGE, length) ELSE 0
+
+Args:
+    open_ (pd.Series): Series of 'open's
+    high (pd.Series): Series of 'high's
+    low (pd.Series): Series of 'low's
+    close (pd.Series): Series of 'close's
+    length (int): The period. Default: 10
+    factor (float): Doji value, as a percent of the high-low range. Default: 10
+    scalar (float): How much to magnify. Default: 100
+    asint (bool): Keep results numerical instead of boolean. Default: True
+
+Kwargs:
+    naive (bool, optional): If True, prefills potential Doji less than
+        the length if less than a percentage of it's high-low range.
+        Default: False
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series: CDL_DOJI column.
+"""
