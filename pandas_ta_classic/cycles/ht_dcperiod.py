@@ -1,0 +1,69 @@
+# Hilbert Transform - Dominant Cycle Period (HT_DCPERIOD)
+from typing import Any
+
+from pandas import Series
+
+from pandas_ta_classic import Imports
+from pandas_ta_classic.cycles._hilbert import hilbert_result
+from pandas_ta_classic.utils import apply_fill, apply_offset, get_offset, verify_series
+from pandas_ta_classic.utils._core import _bool_param, nan_on_short_input
+
+
+@nan_on_short_input
+def ht_dcperiod(
+    close: Series,
+    talib: bool | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: Hilbert Transform - Dominant Cycle Period"""
+    # Validate Arguments
+    close = verify_series(close)
+    offset = get_offset(offset)
+    mode_talib = _bool_param(talib, False, "talib")
+
+    if close is None:
+        return None
+
+    # Calculate Result
+    if Imports["talib"] and mode_talib:
+        from talib import HT_DCPERIOD
+
+        result = HT_DCPERIOD(close)
+    else:
+        ht = hilbert_result(close, lookback=32)
+        result = Series(ht["smooth_period"], index=close.index)
+
+    # Offset
+    result = apply_offset(result, offset)
+
+    result = apply_fill(result, **kwargs)
+
+    # Name and Categorize it
+    result.name = "HT_DCPERIOD"
+    result.category = "cycles"
+
+    return result
+
+
+ht_dcperiod.__doc__ = """Hilbert Transform - Dominant Cycle Period (HT_DCPERIOD)
+
+The Dominant Cycle Period uses the Hilbert Transform to estimate the
+dominant cycle period of the price data.
+
+Sources:
+    John F. Ehlers, "Rocket Science for Traders"
+
+Args:
+    close (pd.Series): Series of 'close's
+    talib (bool): If TA Lib is installed and talib is True, Returns the TA Lib
+        version. Default: False
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series: New feature generated.
+"""

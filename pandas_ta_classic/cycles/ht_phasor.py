@@ -1,0 +1,76 @@
+# Hilbert Transform - Phasor Components (HT_PHASOR)
+from typing import Any
+
+from pandas import DataFrame, Series
+
+from pandas_ta_classic import Imports
+from pandas_ta_classic.cycles._hilbert import hilbert_result
+from pandas_ta_classic.utils import apply_fill, apply_offset, get_offset, verify_series
+from pandas_ta_classic.utils._core import _bool_param, nan_on_short_input
+
+
+@nan_on_short_input
+def ht_phasor(
+    close: Series,
+    talib: bool | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> DataFrame | None:
+    """Indicator: Hilbert Transform - Phasor Components"""
+    # Validate Arguments
+    close = verify_series(close)
+    offset = get_offset(offset)
+    mode_talib = _bool_param(talib, False, "talib")
+
+    if close is None:
+        return None
+
+    # Calculate Result
+    if Imports["talib"] and mode_talib:
+        from talib import HT_PHASOR
+
+        inphase, quadrature = HT_PHASOR(close)
+    else:
+        ht = hilbert_result(close, lookback=32)
+        inphase = Series(ht["in_phase"], index=close.index)
+        quadrature = Series(ht["quadrature"], index=close.index)
+
+    # Offset
+    inphase, quadrature = apply_offset([inphase, quadrature], offset)
+
+    # Handle fills
+    inphase, quadrature = apply_fill([inphase, quadrature], **kwargs)
+
+    # Name and Categorize it
+    inphase.name = "HT_PHASOR_INPHASE"
+    quadrature.name = "HT_PHASOR_QUAD"
+
+    data = {inphase.name: inphase, quadrature.name: quadrature}
+    df = DataFrame(data)
+    df.name = "HT_PHASOR"
+    df.category = "cycles"
+
+    return df
+
+
+ht_phasor.__doc__ = """Hilbert Transform - Phasor Components (HT_PHASOR)
+
+Returns the InPhase and Quadrature components of the Hilbert Transform,
+which together form a phasor representation of the dominant cycle.
+
+Sources:
+    John F. Ehlers, "Rocket Science for Traders"
+
+Args:
+    close (pd.Series): Series of 'close's
+    talib (bool): If TA Lib is installed and talib is True, Returns the TA Lib
+        version. Default: False
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.DataFrame: inphase and quadrature columns.
+"""
