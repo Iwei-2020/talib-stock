@@ -1,0 +1,93 @@
+# Balance of Power (BOP)
+from typing import Any
+
+from pandas import Series
+
+from pandas_ta_classic import Imports
+from pandas_ta_classic.utils import (
+    apply_fill,
+    apply_offset,
+    get_offset,
+    non_zero_range,
+    verify_series,
+)
+from pandas_ta_classic.utils._core import _bool_param, _number, nan_on_short_input
+
+
+@nan_on_short_input
+def bop(
+    open_: Series,
+    high: Series,
+    low: Series,
+    close: Series,
+    scalar: float | None = None,
+    talib: bool | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: Balance of Power (BOP)"""
+    # Validate Arguments
+    open_ = verify_series(open_)
+    high = verify_series(high)
+    low = verify_series(low)
+    close = verify_series(close)
+    scalar = _number(scalar, 1, "scalar")
+    offset = get_offset(offset)
+    mode_talib = _bool_param(talib, False, "talib")
+
+    if open_ is None or high is None or low is None or close is None:
+        return None
+
+    # Calculate Result
+    # TA-Lib cannot express a non-default scalar; run natively instead of ignoring it
+    if Imports["talib"] and mode_talib and scalar == 1:
+        from talib import BOP
+
+        bop = BOP(open_, high, low, close)
+    else:
+        high_low_range = non_zero_range(high, low)
+        close_open_range = non_zero_range(close, open_)
+        bop = scalar * close_open_range / high_low_range
+        # A fully flat bar (high == low, hence open == close) has no direction:
+        # TA-Lib returns 0 there, but epsilon/epsilon would yield a bogus +1.0.
+        bop = bop.where(high != low, 0.0)
+
+    # Offset
+    bop = apply_offset(bop, offset)
+
+    bop = apply_fill(bop, **kwargs)
+
+    # Name and Categorize it
+    bop.name = "BOP"
+    bop.category = "momentum"
+
+    return bop
+
+
+bop.__doc__ = """Balance of Power (BOP)
+
+Balance of Power measure the market strength of buyers against sellers.
+
+Sources:
+    http://www.worden.com/TeleChartHelp/Content/Indicators/Balance_of_Power.htm
+
+Calculation:
+    BOP = scalar * (close - open) / (high - low)
+
+Args:
+    open (pd.Series): Series of 'open's
+    high (pd.Series): Series of 'high's
+    low (pd.Series): Series of 'low's
+    close (pd.Series): Series of 'close's
+    scalar (float): How much to magnify. Default: 1
+    talib (bool): If TA Lib is installed and talib is True, Returns the TA Lib
+        version. Default: False
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series: New feature generated.
+"""

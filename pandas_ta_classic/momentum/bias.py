@@ -1,0 +1,75 @@
+# Bias (BIAS)
+from typing import Any
+
+from pandas import Series
+
+from pandas_ta_classic.overlap.ma import ma
+from pandas_ta_classic.utils import apply_fill, apply_offset, get_offset, verify_series
+from pandas_ta_classic.utils._core import _pos_int, _str_param, nan_on_short_input
+
+
+@nan_on_short_input
+def bias(
+    close: Series,
+    length: int | None = None,
+    mamode: str | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: Bias (BIAS)"""
+    # Validate Arguments
+    length = _pos_int(length, 26, "length")
+    mamode = _str_param(mamode, "sma", "mamode")
+    close = verify_series(close, length)
+    offset = get_offset(offset)
+
+    if close is None:
+        return None
+
+    # Calculate Result
+    bma = ma(mamode, close, length=length, **kwargs)
+    if bma is None:
+        return None
+    bias = (close / bma) - 1
+
+    # Offset
+    bias = apply_offset(bias, offset)
+
+    bias = apply_fill(bias, **kwargs)
+
+    # Name and Categorize it
+    bias.name = f"BIAS_{bma.name}"
+    bias.category = "momentum"
+
+    return bias
+
+
+bias.__doc__ = """Bias (BIAS)
+
+Rate of change between the source and a moving average.
+
+Sources:
+    Few internet resources on definitive definition.
+    Request by Github user homily, issue #46
+
+Calculation:
+    Default Inputs:
+        length=26, MA='sma'
+
+    BIAS = (close - MA(close, length)) / MA(close, length)
+         = (close / MA(close, length)) - 1
+
+Args:
+    close (pd.Series): Series of 'close's
+    length (int): The period. Default: 26
+    mamode (str): See ```help(ta.ma)```. Default: 'sma'
+    drift (int): The short period. Default: 1
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series: New feature generated.
+"""
