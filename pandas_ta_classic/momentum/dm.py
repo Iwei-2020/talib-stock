@@ -1,0 +1,137 @@
+# Directional Movement (DM)
+from typing import Any
+
+from pandas import DataFrame, Series
+
+from pandas_ta_classic import Imports
+from pandas_ta_classic.overlap.ma import ma
+from pandas_ta_classic.utils import (
+    apply_fill,
+    apply_offset,
+    get_drift,
+    get_offset,
+    verify_series,
+    zero,
+)
+from pandas_ta_classic.utils._core import _bool_param, _pos_int, _str_param, nan_on_short_input
+
+
+@nan_on_short_input
+def dm(
+    high: Series,
+    low: Series,
+    length: int | None = None,
+    mamode: str | None = None,
+    talib: bool | None = None,
+    drift: int | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> DataFrame | None:
+    """Indicator: DM"""
+    # Validate Arguments
+    length = _pos_int(length, 14, "length")
+    mamode = _str_param(mamode, "rma", "mamode")
+    high = verify_series(high, length)
+    low = verify_series(low, length)
+    drift = get_drift(drift)
+    offset = get_offset(offset)
+    mode_talib = _bool_param(talib, False, "talib")
+
+    if high is None or low is None:
+        return None
+
+    # TA-Lib cannot express a non-default drift, mamode; run natively instead of ignoring it
+    if Imports["talib"] and mode_talib and mamode == "rma" and drift == 1:
+        from talib import MINUS_DM, PLUS_DM
+
+        pos = PLUS_DM(high, low, length)
+        neg = MINUS_DM(high, low, length)
+    else:
+        up = high - high.shift(drift)
+        dn = low.shift(drift) - low
+
+        pos_ = ((up > dn) & (up > 0)) * up
+        neg_ = ((dn > up) & (dn > 0)) * dn
+
+        pos_ = pos_.apply(zero)
+        neg_ = neg_.apply(zero)
+
+        if mamode == "rma":
+            # TA-Lib PLUS_DM/MINUS_DM: Wilder cumsum seeding —
+            # delegated to the shared wilder_smooth utility.
+            from pandas_ta_classic.utils._wilder import wilder_smooth
+
+            pos = wilder_smooth(pos_, length)
+            neg = wilder_smooth(neg_, length)
+        else:
+            pos = ma(mamode, pos_, length=length)
+            if pos is None:
+                return None
+            neg = ma(mamode, neg_, length=length)
+            if neg is None:
+                return None
+
+    # Offset
+    pos, neg = apply_offset([pos, neg], offset)
+    pos, neg = apply_fill([pos, neg], **kwargs)
+
+    _params = f"_{length}"
+    data = {
+        f"PLUS_DM{_params}": pos,
+        f"MINUS_DM{_params}": neg,
+    }
+
+    dmdf = DataFrame(data)
+    dmdf.name = f"DM{_params}"
+    dmdf.category = "trend"
+
+    return dmdf
+
+
+dm.__doc__ = """Directional Movement (DM)
+
+The Directional Movement was developed by J. Welles Wilder in 1978 attempts to
+determine which direction the price of an asset is moving. It compares prior
+highs and lows to yield to two series +DM and -DM.
+
+Sources:
+    https://www.tradingview.com/pine-script-reference/#fun_dmi
+    https://www.sierrachart.com/index.php?page=doc/StudiesReference.php&ID=24&Name=Directional_Movement_Index
+
+Calculation:
+    Default Inputs:
+        length=14, mamode="rma", drift=1
+            up = high - high.shift(drift)
+        dn = low.shift(drift) - low
+
+        pos_ = ((up > dn) & (up > 0)) * up
+        neg_ = ((dn > up) & (dn > 0)) * dn
+
+        pos_ = pos_.apply(zero)
+        neg_ = neg_.apply(zero)
+
+        # For RMA (default), Wilder cumsum smoothing is used to match TA-Lib.
+        # Other MA modes are applied via the standard MA pipeline.
+        if mamode == "rma":
+            pos = wilder_smooth(pos_, length)
+            neg = wilder_smooth(neg_, length)
+        else:
+            pos = ma(mamode, pos_, length=length)
+            neg = ma(mamode, neg_, length=length)
+
+Args:
+    high (pd.Series): Series of 'high's
+    low (pd.Series): Series of 'low's
+    mamode (str): See ```help(ta.ma)```.  Default: 'rma'
+    talib (bool): If TA Lib is installed and talib is True, Returns the TA Lib
+        version. Default: False
+    drift (int): The difference period. Default: 1
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.DataFrame: PLUS_DM (+DM) and MINUS_DM (-DM) columns.
+"""
