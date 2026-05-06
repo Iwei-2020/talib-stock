@@ -1,0 +1,104 @@
+# Efficiency Ratio (ER)
+from typing import Any
+
+from pandas import DataFrame, Series, concat
+
+from pandas_ta_classic.utils import (
+    apply_fill,
+    apply_offset,
+    get_drift,
+    get_offset,
+    signals,
+    verify_series,
+)
+from pandas_ta_classic.utils._core import _bool_param, _pos_int, nan_on_short_input
+
+
+@nan_on_short_input
+def er(
+    close: Series,
+    length: int | None = None,
+    drift: int | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | DataFrame | None:
+    """Indicator: Efficiency Ratio (ER)"""
+    # Validate arguments
+    length = _pos_int(length, 10, "length")
+    close = verify_series(close, length)
+    offset = get_offset(offset)
+    drift = get_drift(drift)
+
+    if close is None:
+        return None
+
+    # Calculate Result
+    abs_diff = close.diff(length).abs()
+    abs_volatility = close.diff(drift).abs()
+
+    er = abs_diff
+    er /= abs_volatility.rolling(window=length).sum()
+
+    # Offset
+    er = apply_offset(er, offset)
+
+    er = apply_fill(er, **kwargs)
+
+    # Name and Categorize it
+    er.name = f"ER_{length}"
+    er.category = "momentum"
+
+    signal_indicators = _bool_param(kwargs.pop("signal_indicators", None), False, "signal_indicators")
+    if signal_indicators:
+        return concat(
+            [
+                DataFrame({er.name: er}),
+                signals(
+                    indicator=er,
+                    xa=kwargs.pop("xa", 80),
+                    xb=kwargs.pop("xb", 20),
+                    xserie=kwargs.pop("xserie", None),
+                    xserie_a=kwargs.pop("xserie_a", None),
+                    xserie_b=kwargs.pop("xserie_b", None),
+                    cross_values=_bool_param(kwargs.pop("cross_values", None), False, "cross_values"),
+                    cross_series=_bool_param(kwargs.pop("cross_series", None), True, "cross_series"),
+                    offset=offset,
+                ),
+            ],
+            axis=1,
+        )
+
+    return er
+
+
+er.__doc__ = """Efficiency Ratio (ER)
+
+The Efficiency Ratio was invented by Perry J. Kaufman and presented in his book "New Trading Systems and Methods". It is designed to account for market noise or volatility.
+
+It is calculated by dividing the net change in price movement over N periods by the sum of the absolute net changes over the same N periods.
+
+Sources:
+    https://help.tc2000.com/m/69404/l/749623-kaufman-efficiency-ratio
+
+Calculation:
+    Default Inputs:
+        length=10
+    ABS = Absolute Value
+    EMA = Exponential Moving Average
+
+    abs_diff = ABS(close.diff(length))
+    volatility = ABS(close.diff(1))
+    ER = abs_diff / SUM(volatility, length)
+
+Args:
+    close (pd.Series): Series of 'close's
+    length (int): It's period. Default: 10
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series: New feature generated.
+"""
