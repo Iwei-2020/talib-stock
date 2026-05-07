@@ -1,0 +1,190 @@
+# Moving Average Convergence Divergence (MACD)
+from typing import Any
+
+import numpy as np
+from pandas import DataFrame, Series, concat
+
+from pandas_ta_classic import Imports
+from pandas_ta_classic.overlap.ema import ema
+from pandas_ta_classic.utils import (
+    apply_fill,
+    apply_offset,
+    get_offset,
+    signals,
+    verify_series,
+)
+from pandas_ta_classic.utils._core import _bool_param, _pos_int, nan_on_short_input, skip_leading_nan
+
+
+def _ema_aligned(arr, m, period, seed_end):
+    """EMA with SMA seed at *seed_end*, matching TA-Lib behaviour.
+
+    The seed SMA is computed over the *period* bars ending at *seed_end*; the
+    EMA is then propagated forward from that point.
+
+    Args:
+        arr (np.ndarray): 1-D float array of price values.
+        m (int): Total length of *arr*.
+        period (int): EMA smoothing period.
+        seed_end (int): Index at which the SMA seed is placed.
+
+    Returns:
+        np.ndarray: EMA array of length *m*; positions before *seed_end* are
+            ``NaN``.
+    """
+    result = np.full(m, np.nan)
+    k = 2.0 / (period + 1)
+    start = seed_end - period + 1
+    if start < 0 or seed_end >= m:
+        return result
+    result[seed_end] = arr[start : seed_end + 1].mean()
+    for i in range(seed_end + 1, m):
+        result[i] = k * arr[i] + (1 - k) * result[i - 1]
+    return result
+
+
+@nan_on_short_input
+@skip_leading_nan("close")
+def macd(
+    close: Series,
+    fast: int | None = None,
+    slow: int | None = None,
+    signal: int | None = None,
+    talib: bool | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> DataFrame | None:
+    """Indicator: Moving Average, Convergence/Divergence (MACD)"""
+    # Validate arguments
+    fast = _pos_int(fast, 12, "fast")
+    slow = _pos_int(slow, 26, "slow")
+    signal = _pos_int(signal, 9, "signal")
+    if slow < fast:
+        fast, slow = slow, fast
+    close = verify_series(close, max(fast, slow, signal))
+    offset = get_offset(offset)
+    mode_talib = _bool_param(talib, False, "talib")
+
+    if close is None:
+        return None
+
+    as_mode = kwargs.setdefault("asmode", False)
+
+    # Calculate Result
+    if Imports["talib"] and mode_talib:
+        from talib import MACD
+
+        macd, signalma, histogram = MACD(close, fast, slow, signal)
+    else:
+        c_arr = close.to_numpy(dtype=float)
+        m = c_arr.shape[0]
+        # TA-Lib seeds the fast EMA at its own lookback (fast-1) and the slow
+        # EMA at slow-1; by slow-1 the fast EMA has already been running for
+        # (slow - fast) additional bars, not reseeded with a fresh SMA.
+        fast_start = fast - 1
+        slow_start = slow - 1
+        fast_ema = _ema_aligned(c_arr, m, fast, fast_start)
+        slow_ema = _ema_aligned(c_arr, m, slow, slow_start)
+        macd_arr = fast_ema - slow_ema
+        sig_start = slow_start + signal - 1
+        sig_ema = _ema_aligned(macd_arr, m, signal, sig_start)
+
+        macd = Series(macd_arr, index=close.index)
+        signalma = Series(sig_ema, index=close.index)
+        histogram = macd - signalma
+
+    if as_mode:
+        macd = macd - signalma
+        signalma = ema(close=macd.loc[macd.first_valid_index() :,], length=signal)
+        if signalma is None:
+            return None
+        histogram = macd - signalma
+
+    # Offset
+    macd, histogram, signalma = apply_offset([macd, histogram, signalma], offset)
+
+    macd, histogram, signalma = apply_fill([macd, histogram, signalma], **kwargs)
+
+    # Name and Categorize it
+    _asmode = "AS" if as_mode else ""
+    _props = f"_{fast}_{slow}_{signal}"
+    macd.name = f"MACD{_asmode}{_props}"
+    histogram.name = f"MACD{_asmode}h{_props}"
+    signalma.name = f"MACD{_asmode}s{_props}"
+    macd.category = histogram.category = signalma.category = "momentum"
+
+    # Prepare DataFrame to return
+    data = {macd.name: macd, histogram.name: histogram, signalma.name: signalma}
+    df = DataFrame(data)
+    df.name = f"MACD{_asmode}{_props}"
+    df.category = macd.category
+
+    signal_indicators = _bool_param(kwargs.pop("signal_indicators", None), False, "signal_indicators")
+    if signal_indicators:
+        # Read each option once and give it to both signal sets. Popping it inside
+        # the first signals() call left the MACD-line signals with the defaults.
+        signal_kwargs = {
+            "xa": kwargs.pop("xa", 0),
+            "xb": kwargs.pop("xb", None),
+            "xserie": kwargs.pop("xserie", None),
+            "xserie_a": kwargs.pop("xserie_a", None),
+            "xserie_b": kwargs.pop("xserie_b", None),
+            "cross_series": _bool_param(kwargs.pop("cross_series", None), True, "cross_series"),
+            "offset": offset,
+        }
+        cross_values = kwargs.pop("cross_values", None)
+        return concat(
+            [
+                df,
+                # cross_values defaults differ: crossings for the histogram, levels for the MACD line
+                signals(indicator=histogram, cross_values=_bool_param(cross_values, True, "cross_values"), **signal_kwargs),
+                signals(indicator=macd, cross_values=_bool_param(cross_values, False, "cross_values"), **signal_kwargs),
+            ],
+            axis=1,
+        )
+
+    return df
+
+
+macd.__doc__ = """Moving Average Convergence Divergence (MACD)
+
+The MACD is a popular indicator to that is used to identify a security's trend.
+While APO and MACD are the same calculation, MACD also returns two more series
+called Signal and Histogram. The Signal is an EMA of MACD and the Histogram is
+the difference of MACD and Signal.
+
+Sources:
+    https://www.tradingview.com/wiki/MACD_(Moving_Average_Convergence/Divergence)
+    AS Mode: https://tr.tradingview.com/script/YFlKXHnP/
+
+Calculation:
+    Default Inputs:
+        fast=12, slow=26, signal=9
+    EMA = Exponential Moving Average
+    MACD = EMA(close, fast) - EMA(close, slow)
+    Signal = EMA(MACD, signal)
+    Histogram = MACD - Signal
+
+    if asmode:
+        MACD = MACD - Signal
+        Signal = EMA(MACD, signal)
+        Histogram = MACD - Signal
+
+Args:
+    close (pd.Series): Series of 'close's
+    fast (int): The short period. Default: 12
+    slow (int): The long period. Default: 26
+    signal (int): The signal period. Default: 9
+    talib (bool): If TA Lib is installed and talib is True, Returns the TA Lib
+        version. Default: False
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    asmode (value, optional): When True, enables AS version of MACD.
+        Default: False
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.DataFrame: macd, histogram, signal columns.
+"""

@@ -1,0 +1,83 @@
+# Pretty Good Oscillator (PGO)
+from typing import Any
+
+from pandas import Series
+
+from pandas_ta_classic.overlap.ema import ema
+from pandas_ta_classic.overlap.sma import sma
+from pandas_ta_classic.utils import apply_fill, apply_offset, get_offset, verify_series
+from pandas_ta_classic.utils._core import _pos_int, nan_on_short_input
+from pandas_ta_classic.volatility.atr import atr
+
+
+@nan_on_short_input
+def pgo(
+    high: Series,
+    low: Series,
+    close: Series,
+    length: int | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: Pretty Good Oscillator (PGO)"""
+    # Validate arguments
+    length = _pos_int(length, 14, "length")
+    high = verify_series(high, length)
+    low = verify_series(low, length)
+    close = verify_series(close, length)
+    offset = get_offset(offset)
+
+    if high is None or low is None or close is None:
+        return None
+
+    # Calculate Result
+    _atr = atr(high, low, close, length)
+    if _atr is None:
+        return None
+    pgo = close - sma(close, length)
+    pgo /= ema(_atr, length)
+
+    # Offset
+    pgo = apply_offset(pgo, offset)
+
+    pgo = apply_fill(pgo, **kwargs)
+
+    # Name and Categorize it
+    pgo.name = f"PGO_{length}"
+    pgo.category = "momentum"
+
+    return pgo
+
+
+pgo.__doc__ = """Pretty Good Oscillator (PGO)
+
+The Pretty Good Oscillator indicator was created by Mark Johnson to measure the distance of the current close from its N-day Simple Moving Average, expressed in terms of an average true range over a similar period. Johnson's approach was to
+use it as a breakout system for longer term trades. Long if greater than 3.0 and
+short if less than -3.0.
+
+Sources:
+    https://library.tradingtechnologies.com/trade/chrt-ti-pretty-good-oscillator.html
+
+Calculation:
+    Default Inputs:
+        length=14
+    ATR = Average True Range
+    SMA = Simple Moving Average
+    EMA = Exponential Moving Average
+
+    PGO = (close - SMA(close, length)) / EMA(ATR(high, low, close, length), length)
+
+Args:
+    high (pd.Series): Series of 'high's
+    low (pd.Series): Series of 'low's
+    close (pd.Series): Series of 'close's
+    length (int): It's period. Default: 14
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series: New feature generated.
+"""
