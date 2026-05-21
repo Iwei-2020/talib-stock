@@ -1,0 +1,71 @@
+# Rate of Change Ratio (ROCR)
+from typing import Any
+
+from pandas import Series
+
+from pandas_ta_classic import Imports
+from pandas_ta_classic.utils import apply_fill, apply_offset, get_offset, verify_series
+from pandas_ta_classic.utils._core import _bool_param, _pos_int, nan_on_short_input
+
+
+@nan_on_short_input
+def rocr(
+    close: Series,
+    length: int | None = None,
+    talib: bool | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: Rate of Change Ratio (ROCR)"""
+    # Validate Arguments
+    length = _pos_int(length, 10, "length")
+    close = verify_series(close, length)
+    offset = get_offset(offset)
+    mode_talib = _bool_param(talib, False, "talib")
+
+    if close is None:
+        return None
+
+    # Calculate Result
+    if Imports["talib"] and mode_talib:
+        from talib import ROCR as TAROCR
+
+        rocr_ = TAROCR(close, length)
+    else:
+        rocr_ = close / close.shift(length)
+
+    # Offset
+    rocr_ = apply_offset(rocr_, offset)
+
+    rocr_ = apply_fill(rocr_, **kwargs)
+
+    # Name and Categorize it
+    rocr_.name = f"ROCR_{length}"
+    rocr_.category = "momentum"
+
+    return rocr_
+
+
+rocr.__doc__ = """Rate of Change Ratio (ROCR)
+
+Rate of Change Ratio measures the ratio of the current price to the price
+n periods ago.
+
+ROCR = close / close[n]
+
+Sources:
+    https://www.investopedia.com/terms/r/rateofchange.asp
+
+Args:
+    close (pd.Series): Close price series.
+    length (int): The period. Default: 10
+    talib (bool): Use TA-Lib if installed. Default: False
+    offset (int): Result offset. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series: ROCR values.
+"""

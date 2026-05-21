@@ -1,0 +1,137 @@
+# Percentage Price Oscillator (PPO)
+from typing import Any
+
+from pandas import DataFrame, Series
+
+from pandas_ta_classic import Imports
+from pandas_ta_classic.overlap.ma import ma
+from pandas_ta_classic.utils import (
+    apply_fill,
+    apply_offset,
+    get_offset,
+    tal_ma,
+    verify_series,
+)
+from pandas_ta_classic.utils._core import _bool_param, _number, _pos_int, _str_param, nan_on_short_input
+
+
+def _ppo_compute(close, fast, slow, signal, scalar, mamode, mode_talib):
+    """Compute PPO, histogram and signal line.
+
+    Returns:
+        tuple[Series, Series, Series] | None: ``(ppo_s, histogram, signalma)``
+        or *None* if any intermediate result is unavailable.
+    """
+    # TA-Lib cannot express a non-default scalar; run natively instead of ignoring it
+    if Imports["talib"] and mode_talib and scalar == 100:
+        from talib import PPO
+
+        ppo_s = PPO(close, fast, slow, tal_ma(mamode))
+    else:
+        fastma = ma(mamode, close, length=fast)
+        if fastma is None:
+            return None
+        slowma = ma(mamode, close, length=slow)
+        if slowma is None:
+            return None
+        ppo_s = scalar * (fastma - slowma)
+        ppo_s /= slowma
+
+    signalma = ma("ema", ppo_s, length=signal)
+    if signalma is None:
+        return None
+    histogram = ppo_s - signalma
+    return ppo_s, histogram, signalma
+
+
+@nan_on_short_input
+def ppo(
+    close: Series,
+    fast: int | None = None,
+    slow: int | None = None,
+    signal: int | None = None,
+    scalar: float | None = None,
+    mamode: str | None = None,
+    talib: bool | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> DataFrame | None:
+    """Indicator: Percentage Price Oscillator (PPO)"""
+    # Validate Arguments
+    fast = _pos_int(fast, 12, "fast")
+    slow = _pos_int(slow, 26, "slow")
+    signal = _pos_int(signal, 9, "signal")
+    scalar = _number(scalar, 100, "scalar")
+    mamode = _str_param(mamode, "sma", "mamode")
+    if slow < fast:
+        fast, slow = slow, fast
+    close = verify_series(close, max(fast, slow, signal))
+    offset = get_offset(offset)
+    mode_talib = _bool_param(talib, False, "talib")
+
+    if close is None:
+        return None
+
+    # Calculate Result
+    result = _ppo_compute(close, fast, slow, signal, scalar, mamode, mode_talib)
+    if result is None:
+        return None
+    ppo_s, histogram, signalma = result
+
+    # Offset
+    ppo_s, histogram, signalma = apply_offset([ppo_s, histogram, signalma], offset)
+
+    ppo_s, histogram, signalma = apply_fill([ppo_s, histogram, signalma], **kwargs)
+
+    # Name and Categorize it
+    _props = f"_{fast}_{slow}_{signal}"
+    ppo_s.name = f"PPO{_props}"
+    histogram.name = f"PPOh{_props}"
+    signalma.name = f"PPOs{_props}"
+    ppo_s.category = histogram.category = signalma.category = "momentum"
+
+    # Prepare DataFrame to return
+    data = {ppo_s.name: ppo_s, histogram.name: histogram, signalma.name: signalma}
+    df = DataFrame(data)
+    df.name = f"PPO{_props}"
+    df.category = ppo_s.category
+
+    return df
+
+
+ppo.__doc__ = """Percentage Price Oscillator (PPO)
+
+The Percentage Price Oscillator is similar to MACD in measuring momentum.
+
+Sources:
+    https://www.tradingview.com/wiki/MACD_(Moving_Average_Convergence/Divergence)
+
+Calculation:
+    Default Inputs:
+        fast=12, slow=26
+    SMA = Simple Moving Average
+    EMA = Exponential Moving Average
+    fast_sma = SMA(close, fast)
+    slow_sma = SMA(close, slow)
+    PPO = 100 * (fast_sma - slow_sma) / slow_sma
+    Signal = EMA(PPO, signal)
+    Histogram = PPO - Signal
+
+Args:
+    close(pandas.Series): Series of 'close's
+    fast(int): The short period. Default: 12
+    slow(int): The long period. Default: 26
+    signal(int): The signal period. Default: 9
+    scalar (float): How much to magnify. Default: 100
+    mamode (str): See ```help(ta.ma)```. Default: 'sma'
+    talib (bool): If TA Lib is installed and talib is True, Returns the TA Lib
+        version. Default: False
+    offset(int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.DataFrame: ppo, histogram, signal columns
+"""

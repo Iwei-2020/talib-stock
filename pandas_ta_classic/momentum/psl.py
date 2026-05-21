@@ -1,0 +1,105 @@
+# Psychological Line (PSL)
+from typing import Any
+
+import numpy as np
+from pandas import Series
+
+from pandas_ta_classic.utils import (
+    apply_fill,
+    apply_offset,
+    get_drift,
+    get_offset,
+    verify_series,
+)
+from pandas_ta_classic.utils._core import _pos_float, _pos_int, nan_on_short_input, skip_leading_nan
+
+
+@nan_on_short_input
+@skip_leading_nan("close")
+def psl(
+    close: Series,
+    open_: Series | None = None,
+    length: int | None = None,
+    scalar: float | None = None,
+    drift: int | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: Psychological Line (PSL)"""
+    # Validate Arguments
+    length = _pos_int(length, 12, "length")
+    scalar = _pos_float(scalar, 100, "scalar")
+    close = verify_series(close, length)
+    drift = get_drift(drift)
+    offset = get_offset(offset)
+
+    if close is None:
+        return None
+
+    # Calculate Result
+    if open_ is not None:
+        open_ = verify_series(open_)
+        if open_ is None:
+            return None
+        diff = np.sign(close - open_)
+    else:
+        diff = np.sign(close.diff(drift))
+
+    diff.fillna(0, inplace=True)
+    diff[diff <= 0] = 0  # Zero negative values
+
+    psl = scalar * diff.rolling(length).sum()
+    psl /= length
+
+    # Offset
+    psl = apply_offset(psl, offset)
+
+    psl = apply_fill(psl, **kwargs)
+
+    # Name and Categorize it
+    _props = f"_{length}"
+    psl.name = f"PSL{_props}"
+    psl.category = "momentum"
+
+    return psl
+
+
+psl.__doc__ = """Psychological Line (PSL)
+
+The Psychological Line is an oscillator-type indicator that compares the
+number of the rising periods to the total number of periods. In other
+words, it is the percentage of bars that close above the previous
+bar over a given period.
+
+Sources:
+    https://www.quantshare.com/item-851-psychological-line
+
+Calculation:
+    Default Inputs:
+        length=12, scalar=100, drift=1
+
+    IF NOT open:
+        DIFF = SIGN(close - close[drift])
+    ELSE:
+        DIFF = SIGN(close - open)
+
+    DIFF.fillna(0)
+    DIFF[DIFF <= 0] = 0
+
+    PSL = scalar * SUM(DIFF, length) / length
+
+Args:
+    close (pd.Series): Series of 'close's
+    open_ (pd.Series, optional): Series of 'open's
+    length (int): It's period. Default: 12
+    scalar (float): How much to magnify. Default: 100
+    drift (int): The difference period. Default: 1
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series: New feature generated.
+"""
