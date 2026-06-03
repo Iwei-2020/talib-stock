@@ -1,0 +1,223 @@
+# Schaff Trend Cycle (STC)
+from typing import Any
+
+from pandas import DataFrame, Series
+
+from pandas_ta_classic.overlap.ema import ema
+from pandas_ta_classic.utils import (
+    apply_fill,
+    apply_offset,
+    get_offset,
+    non_zero_range,
+    verify_series,
+)
+from pandas_ta_classic.utils._core import _pos_float, _pos_int, nan_on_short_input
+from pandas_ta_classic.utils._njit import njit
+
+
+@njit(cache=True)
+def _stc_smooth(src, lowest, rng, guard, factor):
+    """Stochastic-of-source followed by the STC smoothing recursion.
+
+    ``guard`` selects when the stochastic is recomputed vs. held from the
+    previous bar (the two STC passes gate on different series — the rolling
+    minimum for the first pass, the rolling range for the second). Rounding
+    to 8 decimals is cumulative, so it must stay inside the loop to match the
+    original bit-for-bit.
+    """
+    m = src.shape[0]
+    stoch = src.copy()
+    out = src.copy()
+    stoch[0] = 0.0
+    out[0] = 0.0
+    for i in range(1, m):
+        if guard[i] > 0:
+            stoch[i] = 100.0 * ((src[i] - lowest[i]) / rng[i])
+        else:
+            stoch[i] = stoch[i - 1]
+        out[i] = round(out[i - 1] + factor * (stoch[i] - out[i - 1]), 8)
+    return out
+
+
+def _stc_compute_xmacd(close, fast, slow, _length, ma1, ma2, osc):
+    """Return the MACD-like oscillator used by the Schaff TC calculation.
+
+    Handles the three input modes:
+
+    * External ``ma1`` / ``ma2`` series — returns their difference.
+    * External ``osc`` oscillator series — returned as-is.
+    * Traditional mode — internal EMA-based MACD line.
+
+    Args:
+        close (Series): Close price series.
+        fast (int): Fast EMA period (traditional mode only).
+        slow (int): Slow EMA period (traditional mode only).
+        _length (int): Minimum required length for series validation.
+        ma1 (Series | bool): First external MA (or False).
+        ma2 (Series | bool): Second external MA (or False).
+        osc (Series | bool): External oscillator (or False).
+
+    Returns:
+        Series | None: xmacd line, or *None* when a required series fails
+        validation.
+    """
+    if isinstance(ma1, Series) and isinstance(ma2, Series) and not osc:
+        ma1 = verify_series(ma1, _length)
+        ma2 = verify_series(ma2, _length)
+        if ma1 is None or ma2 is None:
+            return None
+        return ma1 - ma2
+
+    if isinstance(osc, Series):
+        osc = verify_series(osc, _length)
+        if osc is None:
+            return None
+        return osc
+
+    # Traditional / full mode
+    fastma = ema(close, length=fast)
+    slowma = ema(close, length=slow)
+    return fastma - slowma
+
+
+@nan_on_short_input
+def stc(
+    close: Series,
+    tclength: int | None = None,
+    fast: int | None = None,
+    slow: int | None = None,
+    factor: float | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> DataFrame | None:
+    """Indicator: Schaff Trend Cycle (STC)"""
+    # Validate arguments
+    tclength = _pos_int(tclength, 10, "tclength")
+    fast = _pos_int(fast, 12, "fast")
+    slow = _pos_int(slow, 26, "slow")
+    factor = _pos_float(factor, 0.5, "factor")
+    if slow < fast:  # mandatory condition, but might be confusing
+        fast, slow = slow, fast
+    _length = max(tclength, fast, slow)
+    close = verify_series(close, _length)
+    offset = get_offset(offset)
+
+    if close is None:
+        return None
+
+    # kwargs allows for three more series (ma1, ma2 and osc) which can be passed
+    # here ma1 and ma2 input negate internal ema calculations, osc substitutes
+    # both ma's.
+    ma1 = kwargs.pop("ma1", False)
+    ma2 = kwargs.pop("ma2", False)
+    osc = kwargs.pop("osc", False)
+
+    xmacd = _stc_compute_xmacd(close, fast, slow, _length, ma1, ma2, osc)
+    if xmacd is None:
+        return None
+    pff, pf = schaff_tc(close, xmacd, tclength, factor)
+
+    # Resulting Series
+    stc = Series(pff, index=close.index)
+    macd = Series(xmacd, index=close.index)
+    stoch = Series(pf, index=close.index)
+
+    # Offset
+    stc, macd, stoch = apply_offset([stc, macd, stoch], offset)
+
+    stc, macd, stoch = apply_fill([stc, macd, stoch], **kwargs)
+
+    # Name and Categorize it
+    _props = f"_{tclength}_{fast}_{slow}_{factor}"
+    stc.name = f"STC{_props}"
+    macd.name = f"STCmacd{_props}"
+    stoch.name = f"STCstoch{_props}"
+    stc.category = macd.category = stoch.category = "momentum"
+
+    # Prepare DataFrame to return
+    data = {stc.name: stc, macd.name: macd, stoch.name: stoch}
+    df = DataFrame(data)
+    df.name = f"STC{_props}"
+    df.category = stc.category
+
+    return df
+
+
+stc.__doc__ = """Schaff Trend Cycle (STC)
+
+The Schaff Trend Cycle is an evolution of the popular MACD incorportating two
+cascaded stochastic calculations with additional smoothing.
+
+The STC returns also the beginning MACD result as well as the result after the
+first stochastic including its smoothing. This implementation has been extended
+for Pandas TA to also allow for separatly feeding any other two moving Averages
+(as ma1 and ma2) or to skip this to feed an oscillator (osc), based on which the
+Schaff Trend Cycle should be calculated.
+
+Feed external moving averages:
+Internally calculation..
+    stc = ta.stc(close=df["close"], tclen=stc_tclen, fast=ma1_interval, slow=ma2_interval, factor=stc_factor)
+becomes..
+    extMa1 = df.ta.zlma(close=df["close"], length=ma1_interval, append=True)
+    extMa2 = df.ta.ema(close=df["close"], length=ma2_interval, append=True)
+    stc = ta.stc(close=df["close"], tclen=stc_tclen, ma1=extMa1, ma2=extMa2, factor=stc_factor)
+
+The same goes for osc=, which allows the input of an externally calculated oscillator, overriding ma1 & ma2.
+
+
+Sources:
+    Implemented by rengel8 based on work found here:
+    https://www.prorealcode.com/prorealtime-indicators/schaff-trend-cycle2/
+
+Calculation:
+    STCmacd = Moving Average Convergance/Divergance or Oscillator
+    STCstoch = Intermediate Stochastic of MACD/Osc.
+    2nd Stochastic including filtering with results in the
+    STC = Schaff Trend Cycle
+
+Args:
+    close (pd.Series): Series of 'close's, used for indexing Series, mandatory
+    tclen (int): SchaffTC Signal-Line length.  Default: 10 (adjust to the half of cycle)
+    fast (int): The short period.   Default: 12
+    slow (int): The long period.   Default: 26
+    factor (float): smoothing factor for last stoch. calculation.   Default: 0.5
+    offset (int): How many periods to offset the result.  Default: 0
+
+Kwargs:
+    ma1: 1st moving average provided externally (mandatory in conjuction with ma2)
+    ma2: 2nd moving average provided externally (mandatory in conjuction with ma1)
+    osc: an externally feeded osillator
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.DataFrame: stc, macd, stoch
+"""
+
+
+def schaff_tc(close: Series, xmacd: Series, tclength: int, factor: float) -> list:
+    # ACTUAL Calculation part, which is shared between operation modes
+    # 1st: Stochastic of MACD (gated on the rolling minimum)
+    lowest_xmacd = xmacd.rolling(tclength).min()  # min value in interval tclen
+    xmacd_range = non_zero_range(xmacd.rolling(tclength).max(), lowest_xmacd)
+    pf_arr = _stc_smooth(
+        xmacd.to_numpy(dtype=float),
+        lowest_xmacd.to_numpy(dtype=float),
+        xmacd_range.to_numpy(dtype=float),
+        lowest_xmacd.to_numpy(dtype=float),
+        factor,
+    )
+    pf = Series(pf_arr, index=close.index)
+
+    # 2nd: Stochastic of smoothed Percent Fast D, 'PF', above (gated on the range)
+    lowest_pf = pf.rolling(tclength).min()
+    pf_range = non_zero_range(pf.rolling(tclength).max(), lowest_pf)
+    pff_arr = _stc_smooth(
+        pf_arr,
+        lowest_pf.to_numpy(dtype=float),
+        pf_range.to_numpy(dtype=float),
+        pf_range.to_numpy(dtype=float),
+        factor,
+    )
+
+    return [pff_arr, pf]

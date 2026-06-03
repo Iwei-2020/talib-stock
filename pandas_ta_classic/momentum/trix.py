@@ -1,0 +1,102 @@
+# TRIX (TRIX)
+from typing import Any
+
+from pandas import DataFrame, Series
+
+from pandas_ta_classic.overlap.ema import ema
+from pandas_ta_classic.utils import (
+    apply_fill,
+    apply_offset,
+    get_drift,
+    get_offset,
+    verify_series,
+)
+from pandas_ta_classic.utils._core import _bool_param, _number, _pos_int, nan_on_short_input
+
+
+@nan_on_short_input
+def trix(
+    close: Series,
+    length: int | None = None,
+    signal: int | None = None,
+    scalar: float | None = None,
+    talib: bool | None = None,
+    drift: int | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> DataFrame | None:
+    """Indicator: Trix (TRIX)"""
+    # Validate Arguments
+    length = _pos_int(length, 30, "length")
+    signal = _pos_int(signal, 9, "signal")
+    scalar = _number(scalar, 100, "scalar")
+    close = verify_series(close, max(length, signal))
+    drift = get_drift(drift)
+    offset = get_offset(offset)
+    mode_talib = _bool_param(talib, False, "talib")
+
+    if close is None:
+        return None
+
+    # Calculate Result — propagate talib to EMA so all three stages use same backend
+    ema1 = ema(close=close, length=length, talib=mode_talib, **kwargs)
+    ema2 = ema(close=ema1, length=length, talib=mode_talib, **kwargs)
+    ema3 = ema(close=ema2, length=length, talib=mode_talib, **kwargs)
+    if ema1 is None or ema2 is None or ema3 is None:
+        return None
+    trix = scalar * (ema3 / ema3.shift(drift) - 1)
+
+    trix_signal = trix.rolling(signal).mean()
+
+    # Offset
+    trix, trix_signal = apply_offset([trix, trix_signal], offset)
+
+    trix, trix_signal = apply_fill([trix, trix_signal], **kwargs)
+
+    # Name & Category
+    trix.name = f"TRIX_{length}_{signal}"
+    trix_signal.name = f"TRIXs_{length}_{signal}"
+    trix.category = trix_signal.category = "momentum"
+
+    # Prepare DataFrame to return
+    df = DataFrame({trix.name: trix, trix_signal.name: trix_signal})
+    df.name = f"TRIX_{length}_{signal}"
+    df.category = "momentum"
+
+    return df
+
+
+trix.__doc__ = """Trix (TRIX)
+
+TRIX is a momentum oscillator to identify divergences.
+
+Sources:
+    https://www.tradingview.com/wiki/TRIX
+
+Calculation:
+    Default Inputs:
+        length=18, drift=1
+    EMA = Exponential Moving Average
+    ROC = Rate of Change
+    ema1 = EMA(close, length)
+    ema2 = EMA(ema1, length)
+    ema3 = EMA(ema2, length)
+    TRIX = 100 * ROC(ema3, drift)
+
+Args:
+    close (pd.Series): Series of 'close's
+    length (int): It's period. Default: 30
+    signal (int): It's period. Default: 9
+    scalar (float): How much to magnify. Default: 100
+    drift (int): The difference period. Default: 1
+    talib (bool): If TA Lib is installed and talib is True, Returns the TA Lib
+        version. Default: False
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series: New feature generated.
+"""
