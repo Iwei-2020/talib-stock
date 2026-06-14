@@ -1,0 +1,158 @@
+# Ultimate Oscillator (UO)
+from typing import Any
+
+from pandas import DataFrame, Series
+
+from pandas_ta_classic import Imports
+from pandas_ta_classic.utils import (
+    apply_fill,
+    apply_offset,
+    get_drift,
+    get_offset,
+    verify_series,
+)
+from pandas_ta_classic.utils._core import _bool_param, _pos_float, _pos_int, nan_on_short_input
+
+
+def _uo_native(high, low, close, fast, medium, slow, fast_w, medium_w, slow_w, drift):
+    """Compute the Ultimate Oscillator without TA-Lib.
+
+    Args:
+        high (Series): High price series.
+        low (Series): Low price series.
+        close (Series): Close price series.
+        fast (int): Fast period.
+        medium (int): Medium period.
+        slow (int): Slow period.
+        fast_w (float): Fast period weight.
+        medium_w (float): Medium period weight.
+        slow_w (float): Slow period weight.
+        drift (int): Periods to shift ``close`` for the previous-close column.
+
+    Returns:
+        Series: UO values scaled to 0–100.
+    """
+    tdf = DataFrame({"high": high, "low": low, f"close_{drift}": close.shift(drift)})
+    # skipna=False so a missing previous close (the first `drift` bars) yields a
+    # NaN true range instead of silently using high/low.  Otherwise bar 0 gets
+    # TR = high - low and publishes a value one bar before TA-Lib.
+    max_h_or_pc = tdf.loc[:, ["high", f"close_{drift}"]].max(axis=1, skipna=False)
+    min_l_or_pc = tdf.loc[:, ["low", f"close_{drift}"]].min(axis=1, skipna=False)
+    del tdf
+
+    bp = close - min_l_or_pc
+    tr = max_h_or_pc - min_l_or_pc
+
+    fast_avg = bp.rolling(fast).sum() / tr.rolling(fast).sum()
+    medium_avg = bp.rolling(medium).sum() / tr.rolling(medium).sum()
+    slow_avg = bp.rolling(slow).sum() / tr.rolling(slow).sum()
+
+    total_weight = fast_w + medium_w + slow_w
+    weights = (fast_w * fast_avg) + (medium_w * medium_avg) + (slow_w * slow_avg)
+    return 100 * weights / total_weight
+
+
+@nan_on_short_input
+def uo(
+    high: Series,
+    low: Series,
+    close: Series,
+    fast: int | None = None,
+    medium: int | None = None,
+    slow: int | None = None,
+    fast_w: float | None = None,
+    medium_w: float | None = None,
+    slow_w: float | None = None,
+    talib: bool | None = None,
+    drift: int | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: Ultimate Oscillator (UO)"""
+    # Validate arguments
+    fast = _pos_int(fast, 7, "fast")
+    fast_w = _pos_float(fast_w, 4.0, "fast_w")
+    medium = _pos_int(medium, 14, "medium")
+    medium_w = _pos_float(medium_w, 2.0, "medium_w")
+    slow = _pos_int(slow, 28, "slow")
+    slow_w = _pos_float(slow_w, 1.0, "slow_w")
+    _length = max(fast, medium, slow)
+    high = verify_series(high, _length)
+    low = verify_series(low, _length)
+    close = verify_series(close, _length)
+    drift = get_drift(drift)
+    offset = get_offset(offset)
+    mode_talib = _bool_param(talib, False, "talib")
+
+    if high is None or low is None or close is None:
+        return None
+
+    # Calculate Result
+    # TA-Lib cannot express a non-default drift, fast_w, medium_w, slow_w; run natively instead of ignoring it
+    if Imports["talib"] and mode_talib and fast_w == 4.0 and medium_w == 2.0 and slow_w == 1.0 and drift == 1:
+        from talib import ULTOSC
+
+        uo = ULTOSC(high, low, close, fast, medium, slow)
+    else:
+        uo = _uo_native(high, low, close, fast, medium, slow, fast_w, medium_w, slow_w, drift)
+
+    # Offset
+    uo = apply_offset(uo, offset)
+
+    uo = apply_fill(uo, **kwargs)
+
+    # Name and Categorize it
+    uo.name = f"UO_{fast}_{medium}_{slow}"
+    uo.category = "momentum"
+
+    return uo
+
+
+uo.__doc__ = """Ultimate Oscillator (UO)
+
+The Ultimate Oscillator is a momentum indicator over three different
+periods.  It attempts to correct false divergence trading signals.
+
+Sources:
+    https://www.tradingview.com/wiki/Ultimate_Oscillator_(UO)
+
+Calculation:
+    Default Inputs:
+        fast=7, medium=14, slow=28,
+        fast_w=4.0, medium_w=2.0, slow_w=1.0, drift=1
+    min_low_or_pc  = close.shift(drift).combine(low, min)
+    max_high_or_pc = close.shift(drift).combine(high, max)
+
+    bp = buying pressure = close - min_low_or_pc
+    tr = true range = max_high_or_pc - min_low_or_pc
+
+    fast_avg = SUM(bp, fast) / SUM(tr, fast)
+    medium_avg = SUM(bp, medium) / SUM(tr, medium)
+    slow_avg = SUM(bp, slow) / SUM(tr, slow)
+
+    total_weight = fast_w + medium_w + slow_w
+    weights = (fast_w * fast_avg) + (medium_w * medium_avg) + (slow_w * slow_avg)
+    UO = 100 * weights / total_weight
+
+Args:
+    high (pd.Series): Series of 'high's
+    low (pd.Series): Series of 'low's
+    close (pd.Series): Series of 'close's
+    fast (int): The Fast %K period. Default: 7
+    medium (int): The Slow %K period. Default: 14
+    slow (int): The Slow %D period. Default: 28
+    fast_w (float): The Fast %K period. Default: 4.0
+    medium_w (float): The Slow %K period. Default: 2.0
+    slow_w (float): The Slow %D period. Default: 1.0
+    talib (bool): If TA Lib is installed and talib is True, Returns the TA Lib
+        version. Default: False
+    drift (int): The difference period. Default: 1
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series: New feature generated.
+"""

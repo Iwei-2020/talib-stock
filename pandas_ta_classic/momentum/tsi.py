@@ -1,0 +1,130 @@
+# True Strength Index (TSI)
+from typing import Any
+
+from pandas import DataFrame, Series
+
+from pandas_ta_classic.overlap.ema import ema
+from pandas_ta_classic.overlap.ma import ma
+from pandas_ta_classic.utils import (
+    apply_fill,
+    apply_offset,
+    get_drift,
+    get_offset,
+    verify_series,
+)
+from pandas_ta_classic.utils._core import _number, _pos_int, _str_param, nan_on_short_input
+
+
+@nan_on_short_input
+def tsi(
+    close: Series,
+    fast: int | None = None,
+    slow: int | None = None,
+    signal: int | None = None,
+    scalar: float | None = None,
+    mamode: str | None = None,
+    drift: int | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> DataFrame | None:
+    """Indicator: True Strength Index (TSI)"""
+    # Validate Arguments
+    fast = _pos_int(fast, 13, "fast")
+    slow = _pos_int(slow, 25, "slow")
+    signal = _pos_int(signal, 13, "signal")
+    # if slow < fast:
+    #     fast, slow = slow, fast
+    scalar = _number(scalar, 100, "scalar")
+    close = verify_series(close, max(fast, slow))
+    drift = get_drift(drift)
+    offset = get_offset(offset)
+    mamode = _str_param(mamode, "ema", "mamode")
+    # A strategy-wide length (df.ta.strategy(..., length=N)) has no meaning here and the
+    # inner calls set length themselves; drop it so it cannot collide with their keyword.
+    kwargs.pop("length", None)
+
+    if close is None:
+        return None
+
+    # Calculate Result
+    diff = close.diff(drift)
+    slow_ema = ema(close=diff, length=slow, **kwargs)
+    if slow_ema is None:
+        return None
+    fast_slow_ema = ema(close=slow_ema, length=fast, **kwargs)
+    if fast_slow_ema is None:
+        return None
+
+    abs_diff = diff.abs()
+    abs_slow_ema = ema(close=abs_diff, length=slow, **kwargs)
+    if abs_slow_ema is None:
+        return None
+    abs_fast_slow_ema = ema(close=abs_slow_ema, length=fast, **kwargs)
+    if abs_fast_slow_ema is None:
+        return None
+
+    tsi = scalar * fast_slow_ema / abs_fast_slow_ema
+    tsi_signal = ma(mamode, tsi, length=signal)
+    if tsi_signal is None:
+        return None
+
+    # Offset
+    tsi, tsi_signal = apply_offset([tsi, tsi_signal], offset)
+
+    tsi, tsi_signal = apply_fill([tsi, tsi_signal], **kwargs)
+
+    # Name and Categorize it
+    tsi.name = f"TSI_{fast}_{slow}_{signal}"
+    tsi_signal.name = f"TSIs_{fast}_{slow}_{signal}"
+    tsi.category = tsi_signal.category = "momentum"
+
+    # Prepare DataFrame to return
+    df = DataFrame({tsi.name: tsi, tsi_signal.name: tsi_signal})
+    df.name = f"TSI_{fast}_{slow}_{signal}"
+    df.category = "momentum"
+
+    return df
+
+
+tsi.__doc__ = """True Strength Index (TSI)
+
+The True Strength Index is a momentum indicator used to identify short-term
+swings while in the direction of the trend as well as determining overbought
+and oversold conditions.
+
+Sources:
+    https://www.investopedia.com/terms/t/tsi.asp
+
+Calculation:
+    Default Inputs:
+        fast=13, slow=25, signal=13, scalar=100, drift=1
+    EMA = Exponential Moving Average
+    diff = close.diff(drift)
+
+    slow_ema = EMA(diff, slow)
+    fast_slow_ema = EMA(slow_ema, fast)
+
+    abs_diff_slow_ema = absolute_diff_ema = EMA(ABS(diff), slow)
+    abema = abs_diff_fast_slow_ema = EMA(abs_diff_slow_ema, fast)
+
+    TSI = scalar * fast_slow_ema / abema
+    Signal = EMA(TSI, signal)
+
+Args:
+    close (pd.Series): Series of 'close's
+    fast (int): The short period. Default: 13
+    slow (int): The long period. Default: 25
+    signal (int): The signal period. Default: 13
+    scalar (float): How much to magnify. Default: 100
+    mamode (str): Moving Average of TSI Signal Line.
+        See ```help(ta.ma)```. Default: 'ema'
+    drift (int): The difference period. Default: 1
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.DataFrame: tsi, signal.
+"""
