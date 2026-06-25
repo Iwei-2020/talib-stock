@@ -1,0 +1,83 @@
+# Fibonacci Weighted Moving Average (FWMA)
+from typing import Any
+
+from pandas import Series
+
+from pandas_ta_classic.utils import (
+    apply_fill,
+    apply_offset,
+    fibonacci,
+    get_offset,
+    verify_series,
+)
+from pandas_ta_classic.utils._core import _bool_param, _pos_int, _sliding_weighted_ma, nan_on_short_input
+
+
+@nan_on_short_input
+def fwma(
+    close: Series,
+    length: int | None = None,
+    asc: bool | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: Fibonacci's Weighted Moving Average (FWMA)"""
+    # Validate Arguments
+    length = _pos_int(length, 10, "length")
+    asc = _bool_param(asc, True, "asc")
+    close = verify_series(close, length)
+    offset = get_offset(offset)
+
+    if close is None:
+        return None
+
+    # Calculate Result
+    fibs = fibonacci(n=length, weighted=True)
+    if not asc:
+        fibs = fibs[::-1]
+    fwma = _sliding_weighted_ma(close, length, fibs)
+
+    # Offset
+    fwma = apply_offset(fwma, offset)
+    fwma = apply_fill(fwma, **kwargs)
+
+    # Name & Category
+    fwma.name = f"FWMA_{length}"
+    fwma.category = "overlap"
+
+    return fwma
+
+
+fwma.__doc__ = """Fibonacci's Weighted Moving Average (FWMA)
+
+Fibonacci's Weighted Moving Average is similar to a Weighted Moving Average
+(WMA) where the weights are based on the Fibonacci Sequence.
+
+Source: Kevin Johnson
+
+Calculation:
+    Default Inputs:
+        length=10,
+
+    def weights(w):
+        def _compute(x):
+            return np.dot(w * x)
+        return _compute
+
+    fibs = utils.fibonacci(length - 1)
+    FWMA = close.rolling(length)_.apply(weights(fibs), raw=True)
+
+Args:
+    close (pd.Series): Series of 'close's
+    length (int): It's period. Default: 10
+    asc (bool): True: recent values weigh more. False: older values weigh
+        more. Default: True
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series: New feature generated.
+"""

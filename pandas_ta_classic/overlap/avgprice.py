@@ -1,0 +1,72 @@
+# Average Price (AVGPRICE)
+from typing import Any
+
+from pandas import Series
+
+from pandas_ta_classic import Imports
+from pandas_ta_classic.utils import apply_fill, apply_offset, get_offset, verify_series
+from pandas_ta_classic.utils._core import _bool_param, nan_on_short_input
+
+
+@nan_on_short_input
+def avgprice(
+    open_: Series,
+    high: Series,
+    low: Series,
+    close: Series,
+    talib: bool | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: Average Price (AVGPRICE)
+
+    Equal to (Open + High + Low + Close) / 4.  Alias for ohlc4.
+    TA-Lib name: AVGPRICE.
+    """
+    open_ = verify_series(open_)
+    high = verify_series(high)
+    low = verify_series(low)
+    close = verify_series(close)
+    offset = get_offset(offset)
+    mode_talib = _bool_param(talib, False, "talib")
+
+    if open_ is None or high is None or low is None or close is None:
+        return None
+
+    if Imports["talib"] and mode_talib:
+        from talib import AVGPRICE
+
+        result = Series(AVGPRICE(open_, high, low, close), index=close.index)
+    else:
+        result = 0.25 * (open_ + high + low + close)
+
+    result = apply_offset(result, offset)
+    result = apply_fill(result, **kwargs)
+
+    result.name = "AVGPRICE"
+    result.category = "overlap"
+    return result
+
+
+avgprice.__doc__ = """Average Price (AVGPRICE)
+
+AVGPRICE = (Open + High + Low + Close) / 4
+
+Equivalent to ta.ohlc4.  TA-Lib name: AVGPRICE.
+
+Args:
+    open_ (pd.Series): Series of 'open' prices
+    high (pd.Series): Series of 'high' prices
+    low (pd.Series): Series of 'low' prices
+    close (pd.Series): Series of 'close' prices
+    talib (bool): If TA Lib is installed and talib is True, Returns the TA Lib
+        version. Default: False
+    offset (int): Periods to offset. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series
+"""

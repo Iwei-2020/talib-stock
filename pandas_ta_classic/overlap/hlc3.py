@@ -1,0 +1,82 @@
+# HLC3 (HLC3)
+from typing import Any
+
+from pandas import Series
+
+from pandas_ta_classic import Imports
+from pandas_ta_classic.utils import apply_fill, apply_offset, get_offset, verify_series
+from pandas_ta_classic.utils._core import _bool_param, nan_on_short_input
+
+
+@nan_on_short_input
+def hlc3(
+    high: Series,
+    low: Series,
+    close: Series,
+    talib: bool | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: HLC3"""
+    # Validate Arguments
+    high = verify_series(high)
+    low = verify_series(low)
+    close = verify_series(close)
+    offset = get_offset(offset)
+    mode_talib = _bool_param(talib, False, "talib")
+
+    if high is None or low is None or close is None:
+        return None
+
+    # Calculate Result
+    if Imports["talib"] and mode_talib:
+        from talib import TYPPRICE
+
+        hlc3 = TYPPRICE(high, low, close)
+    else:
+        hlc3 = (high + low + close) / 3.0
+
+    # Offset
+    hlc3 = apply_offset(hlc3, offset)
+    hlc3 = apply_fill(hlc3, **kwargs)
+
+    # Name & Category
+    hlc3.name = "HLC3"
+    hlc3.category = "overlap"
+
+    return hlc3
+
+
+hlc3.__doc__ = """HLC3 (Typical Price)
+
+HLC3 calculates the typical price, which is the average of the High, Low, 
+and Close prices for each period. This indicator provides a simple measure 
+of the average price level during a period and is widely used in technical 
+analysis. It's also known as the TA-Lib TYPPRICE function.
+
+Sources:
+    https://www.tradingview.com/support/solutions/43000502273-hlc3/
+    https://school.stockcharts.com/doku.php?id=chart_analysis:typical_price
+    https://www.investopedia.com/terms/t/typicalprice.asp
+
+Calculation:
+    Default Inputs:
+        None (uses raw HLC prices)
+    
+    HLC3 = (High + Low + Close) / 3
+
+Args:
+    high (pd.Series): Series of 'high' prices
+    low (pd.Series): Series of 'low' prices
+    close (pd.Series): Series of 'close' prices
+    talib (bool): If TA Lib is installed and talib is True, Returns the TA Lib
+        version. Default: False
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series: New feature generated.
+"""

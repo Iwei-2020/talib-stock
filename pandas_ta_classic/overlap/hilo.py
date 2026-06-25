@@ -1,0 +1,153 @@
+# Gann High-Low Activator (HILO)
+from typing import Any
+
+import numpy as np
+from pandas import DataFrame, Series
+
+from pandas_ta_classic.utils import apply_fill, apply_offset, get_offset, verify_series
+from pandas_ta_classic.utils._core import _pos_int, _str_param, nan_on_short_input
+from pandas_ta_classic.utils._njit import njit
+
+from .ma import ma
+
+
+@njit(cache=True)
+def _hilo_loop(close: np.ndarray, high_ma: np.ndarray, low_ma: np.ndarray):
+    """Stateful Gann HiLo switch: pick the low/high MA on breakouts, else hold.
+
+    Mirrors the original per-bar loop exactly; NaN comparisons resolve to
+    False just like pandas, so the warmup zone stays NaN.
+    """
+    m = close.shape[0]
+    hilo = np.full(m, np.nan)
+    long = np.full(m, np.nan)
+    short = np.full(m, np.nan)
+    for i in range(1, m):
+        if close[i] > high_ma[i - 1]:
+            hilo[i] = low_ma[i]
+            long[i] = low_ma[i]
+        elif close[i] < low_ma[i - 1]:
+            hilo[i] = high_ma[i]
+            short[i] = high_ma[i]
+        else:
+            hilo[i] = hilo[i - 1]
+            long[i] = hilo[i - 1]
+            short[i] = hilo[i - 1]
+    return hilo, long, short
+
+
+@nan_on_short_input
+def hilo(
+    high: Series,
+    low: Series,
+    close: Series,
+    high_length: int | None = None,
+    low_length: int | None = None,
+    mamode: str | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> DataFrame | None:
+    """Indicator: Gann HiLo (HiLo)"""
+    # Validate Arguments
+    high_length = _pos_int(high_length, 13, "high_length")
+    low_length = _pos_int(low_length, 21, "low_length")
+    mamode = _str_param(mamode, "sma", "mamode")
+    _length = max(high_length, low_length)
+    high = verify_series(high, _length)
+    low = verify_series(low, _length)
+    close = verify_series(close, _length)
+    offset = get_offset(offset)
+
+    if high is None or low is None or close is None:
+        return None
+
+    # Calculate Result
+    high_ma = ma(mamode, high, length=high_length)
+    if high_ma is None:
+        return None
+    low_ma = ma(mamode, low, length=low_length)
+    if low_ma is None:
+        return None
+
+    hilo_arr, long_arr, short_arr = _hilo_loop(close.to_numpy(dtype=float), high_ma.to_numpy(dtype=float), low_ma.to_numpy(dtype=float))
+    hilo = Series(hilo_arr, index=close.index)
+    long = Series(long_arr, index=close.index)
+    short = Series(short_arr, index=close.index)
+
+    # Offset
+    hilo, long, short = apply_offset([hilo, long, short], offset)
+    hilo, long, short = apply_fill([hilo, long, short], **kwargs)
+
+    # Name & Category
+    _props = f"_{high_length}_{low_length}"
+    data = {f"HILO{_props}": hilo, f"HILOl{_props}": long, f"HILOs{_props}": short}
+    df = DataFrame(data, index=close.index)
+
+    df.name = f"HILO{_props}"
+    df.category = "overlap"
+
+    return df
+
+
+hilo.__doc__ = """Gann HiLo Activator(HiLo)
+
+The Gann High Low Activator Indicator was created by Robert Krausz in a 1998
+issue of Stocks & Commodities Magazine. It is a moving average based trend
+indicator consisting of two different simple moving averages.
+
+The indicator tracks both curves (of the highs and the lows). The close of the
+bar defines which of the two gets plotted.
+
+Increasing high_length and decreasing low_length better for short trades,
+vice versa for long positions.
+
+Sources:
+    https://www.sierrachart.com/index.php?page=doc/StudiesReference.php&ID=447&Name=Gann_HiLo_Activator
+    https://www.tradingtechnologies.com/help/x-study/technical-indicator-definitions/simple-moving-average-sma/
+    https://www.tradingview.com/script/XNQSLIYb-Gann-High-Low/
+
+Calculation:
+    Default Inputs:
+        high_length=13, low_length=21, mamode="sma"
+    EMA = Exponential Moving Average
+    HMA = Hull Moving Average
+    SMA = Simple Moving Average # Default
+
+    if "ema":
+        high_ma = EMA(high, high_length)
+        low_ma = EMA(low, low_length)
+    elif "hma":
+        high_ma = HMA(high, high_length)
+        low_ma = HMA(low, low_length)
+    else: # "sma"
+        high_ma = SMA(high, high_length)
+        low_ma = SMA(low, low_length)
+
+    # Similar to Supertrend MA selection
+    hilo = Series(np.nan, index=close.index)
+    for i in range(1, m):
+        if close.iloc[i] > high_ma.iloc[i - 1]:
+            hilo.iloc[i] = low_ma.iloc[i]
+        elif close.iloc[i] < low_ma.iloc[i - 1]:
+            hilo.iloc[i] = high_ma.iloc[i]
+        else:
+            hilo.iloc[i] = hilo.iloc[i - 1]
+
+Args:
+    high (pd.Series): Series of 'high's
+    low (pd.Series): Series of 'low's
+    close (pd.Series): Series of 'close's
+    high_length (int): It's period. Default: 13
+    low_length (int): It's period. Default: 21
+    mamode (str): See ```help(ta.ma)```. Default: 'sma'
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    adjust (bool): Default: True
+    presma (bool, optional): If True, uses SMA for initial value.
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.DataFrame: HILO (line), HILOl (long), HILOs (short) columns.
+"""
