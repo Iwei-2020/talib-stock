@@ -1,0 +1,124 @@
+# Kaufman Adaptive Moving Average (KAMA)
+from typing import Any
+
+import numpy as np
+from pandas import Series
+
+from pandas_ta_classic import Imports
+from pandas_ta_classic.utils import (
+    apply_fill,
+    apply_offset,
+    get_drift,
+    get_offset,
+    non_zero_range,
+    verify_series,
+)
+from pandas_ta_classic.utils._core import _bool_param, _pos_int, nan_on_short_input, skip_leading_nan
+from pandas_ta_classic.utils._njit import njit
+
+
+@njit(cache=True)
+def _kama_nb(sc, close, length):
+    m = close.size
+    result = np.full(m, np.nan)
+    if length - 1 < m:
+        result[length - 1] = close[length - 1]
+    for i in range(length, m):
+        result[i] = sc[i] * close[i] + (1 - sc[i]) * result[i - 1]
+    return result
+
+
+@nan_on_short_input
+@skip_leading_nan("close")
+def kama(
+    close: Series,
+    length: int | None = None,
+    fast: int | None = None,
+    slow: int | None = None,
+    talib: bool | None = None,
+    drift: int | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: Kaufman's Adaptive Moving Average (KAMA)"""
+    # Validate Arguments
+    length = _pos_int(length, 10, "length")
+    fast = _pos_int(fast, 2, "fast")
+    slow = _pos_int(slow, 30, "slow")
+    close = verify_series(close, max(fast, slow, length))
+    drift = get_drift(drift)
+    offset = get_offset(offset)
+    mode_talib = _bool_param(talib, False, "talib")
+
+    if close is None:
+        return None
+
+    # Calculate Result
+    # TA-Lib cannot express a non-default drift; run natively instead of ignoring it
+    if Imports["talib"] and mode_talib and drift == 1:
+        from talib import KAMA as _KAMA
+
+        kama = Series(_KAMA(close, timeperiod=length), index=close.index)
+    else:
+
+        def weight(length: int) -> float:
+            return 2 / (length + 1)
+
+        fr = weight(fast)
+        sr = weight(slow)
+
+        abs_diff = non_zero_range(close, close.shift(length)).abs()
+        peer_diff = non_zero_range(close, close.shift(drift)).abs()
+        peer_diff_sum = peer_diff.rolling(length).sum()
+        er = abs_diff / peer_diff_sum
+        x = er * (fr - sr) + sr
+        sc = x * x
+
+        result = _kama_nb(sc.to_numpy(dtype=float), close.to_numpy(dtype=float), length)
+        kama = Series(result, index=close.index)
+
+    # Offset
+    kama = apply_offset(kama, offset)
+
+    kama = apply_fill(kama, **kwargs)
+
+    # Name & Category
+    kama.name = f"KAMA_{length}_{fast}_{slow}"
+    kama.category = "overlap"
+
+    return kama
+
+
+kama.__doc__ = """Kaufman's Adaptive Moving Average (KAMA)
+
+Developed by Perry Kaufman, Kaufman's Adaptive Moving Average (KAMA) is a moving average
+designed to account for market noise or volatility. KAMA will closely follow prices when
+the price swings are relatively small and the noise is low. KAMA will adjust when the
+price swings widen and follow prices from a greater distance. This trend-following indicator
+can be used to identify the overall trend, time turning points and filter price movements.
+
+Sources:
+    https://stockcharts.com/school/doku.php?id=chart_school:technical_indicators:kaufman_s_adaptive_moving_average
+    https://www.tradingview.com/script/wZGOIz9r-REPOST-Indicators-3-Different-Adaptive-Moving-Averages/
+
+Calculation:
+    Default Inputs:
+        length=10
+
+Args:
+    close (pd.Series): Series of 'close's
+    length (int): It's period. Default: 10
+    fast (int): Fast MA period. Default: 2
+    slow (int): Slow MA period. Default: 30
+    drift (int): The difference period. Default: 1
+    talib (bool): If TA Lib is installed and talib is True, Returns the TA Lib
+        version. Default: False
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series: New feature generated.
+"""

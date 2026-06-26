@@ -1,0 +1,224 @@
+# Linear Regression (LINREG)
+from typing import Any
+
+import numpy as np
+from pandas import Series
+
+from pandas_ta_classic import Imports
+from pandas_ta_classic.utils import apply_fill, apply_offset, get_offset, verify_series
+from pandas_ta_classic.utils._core import _bool_param, _pos_int, nan_on_short_input
+
+# TA-Lib dispatch map: (angle, intercept, slope, tsf) → (module, function)
+_TALIB_DISPATCH = {
+    (True, False, False, False): ("talib", "LINEARREG_ANGLE"),
+    (False, True, False, False): ("talib", "LINEARREG_INTERCEPT"),
+    (False, False, True, False): ("talib", "LINEARREG_SLOPE"),
+    (False, False, False, True): ("talib", "TSF"),
+    (False, False, False, False): ("talib", "LINEARREG"),
+}
+
+
+def _linreg_output(
+    windows,
+    x_arr,
+    x_sum,
+    x2_sum,
+    divisor,
+    length,
+    slope,
+    intercept,
+    angle,
+    degrees,
+    r,
+    tsf,
+):
+    """Compute the requested linear-regression output over *windows*.
+
+    All mode flags are mutually exclusive; the first truthy flag wins.  When
+    no flag is set the default end-point regression value is returned.
+
+    Args:
+        windows (np.ndarray): Shape ``(n - length + 1, length)`` sliding view.
+        x_arr (np.ndarray): ``[0, 1, …, length-1]`` index array.
+        x_sum (float): Precomputed sum of *x_arr*.
+        x2_sum (float): Precomputed sum of squares of *x_arr*.
+        divisor (float): ``length * x2_sum - x_sum ** 2``.
+        length (int): Regression window length.
+        slope (bool): Return OLS slope.
+        intercept (bool): Return OLS intercept.
+        angle (bool): Return slope angle.
+        degrees (bool): Angle in degrees (``True``) or radians (``False``).
+        r (bool): Return Pearson correlation coefficient.
+        tsf (bool): Return Time Series Forecast (one step ahead).
+
+    Returns:
+        np.ndarray: 1-D array of regression values for each window.
+    """
+    y_sums = windows.sum(axis=1)
+    xy_sums = (windows * x_arr).sum(axis=1)
+    m_slopes = (length * xy_sums - x_sum * y_sums) / divisor
+
+    if slope:
+        return m_slopes
+
+    bs = (y_sums * x2_sum - x_sum * xy_sums) / divisor
+
+    if intercept:
+        return bs
+    if angle:
+        theta = np.arctan(m_slopes)
+        if degrees:
+            theta *= 180 / np.pi
+        return theta
+    if r:
+        y2_sums = (windows * windows).sum(axis=1)
+        rn = length * xy_sums - x_sum * y_sums
+        rd = (divisor * (length * y2_sums - y_sums**2)) ** 0.5
+        return rn / rd
+    if tsf:
+        return m_slopes * length + bs
+    return m_slopes * (length - 1) + bs
+
+
+@nan_on_short_input
+def linreg(
+    close: Series,
+    length: int | None = None,
+    talib: bool | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: Linear Regression"""
+    # Validate arguments
+    length = _pos_int(length, 14, "length")
+    close = verify_series(close, length)
+    offset = get_offset(offset)
+    angle = _bool_param(kwargs.pop("angle", None), False, "angle")
+    intercept = _bool_param(kwargs.pop("intercept", None), False, "intercept")
+    degrees = _bool_param(kwargs.pop("degrees", None), True, "degrees")
+    r = _bool_param(kwargs.pop("r", None), False, "r")
+    slope = _bool_param(kwargs.pop("slope", None), False, "slope")
+    tsf = _bool_param(kwargs.pop("tsf", None), False, "tsf")
+    mode_talib = _bool_param(talib, False, "talib")
+
+    if close is None:
+        return None
+
+    # TA-Lib dispatch (not available for `r` or angle-in-radians).
+    _use_talib = Imports["talib"] and mode_talib and not r and not (angle and not degrees)
+    if _use_talib:
+        _close_arr = np.array(close, dtype=float)
+        _talib_fn = _TALIB_DISPATCH.get((angle, intercept, slope, tsf))
+        if _talib_fn is not None:
+            from importlib import import_module
+
+            mod_name, fn_name = _talib_fn
+            mod = import_module(mod_name)
+            _talib_out = getattr(mod, fn_name)(_close_arr, timeperiod=length)
+            linreg = Series(np.array(_talib_out, dtype=float), index=close.index)
+        else:
+            _use_talib = False  # fall through to native
+
+    if not _use_talib:
+        # Calculate Result — fully vectorised OLS over all windows at once.
+        # x = [0, 1, ..., L-1] matches TA-Lib convention; precompute scalar sums.
+        x_arr = np.arange(length, dtype=float)
+        x_sum = 0.5 * length * (length - 1)
+        x2_sum = length * (length - 1) * (2 * length - 1) / 6
+        divisor = length * x2_sum - x_sum * x_sum
+
+        if length > close.size:
+            # Not a single full window fits, so every position is undefined.
+            linreg = Series(np.nan, index=close.index)
+        else:
+            windows = np.lib.stride_tricks.sliding_window_view(np.array(close, dtype=float), length)  # (n-L+1, L)
+            linreg_ = _linreg_output(
+                windows,
+                x_arr,
+                x_sum,
+                x2_sum,
+                divisor,
+                length,
+                slope,
+                intercept,
+                angle,
+                degrees,
+                r,
+                tsf,
+            )
+
+            linreg = Series(np.concatenate([[np.nan] * (length - 1), linreg_]), index=close.index)
+
+    # Offset
+    linreg = apply_offset(linreg, offset)
+
+    linreg = apply_fill(linreg, **kwargs)
+
+    # Name and Categorize it
+    name = "LR"
+    if slope:
+        name += "m"
+    if intercept:
+        name += "b"
+    if angle:
+        name += "a"
+    if r:
+        name += "r"
+    name += f"_{length}"
+    linreg.name = name
+    linreg.category = "overlap"
+
+    return linreg
+
+
+linreg.__doc__ = """Linear Regression Moving Average (linreg)
+
+Linear Regression Moving Average (LINREG). This is a simplified version of a
+Standard Linear Regression. LINREG is a rolling regression of one variable. A
+Standard Linear Regression is between two or more variables.
+
+Source: TA Lib
+
+Calculation:
+    Default Inputs:
+        length=14
+    x = [0, 1, ..., n-1]  (matches TA-Lib convention)
+    x_sum = 0.5 * length * (length - 1)
+    x2_sum = length * (length - 1) * (2 * length - 1) / 6
+    divisor = length * x2_sum - x_sum * x_sum
+
+    lr(series):
+        y_sum = series.sum()
+        y2_sum = (series* series).sum()
+        xy_sum = (x * series).sum()
+
+        m = (length * xy_sum - x_sum * y_sum) / divisor
+        b = (y_sum * x2_sum - x_sum * xy_sum) / divisor
+        return m * (length - 1) + b
+
+    linreg = close.rolling(length).apply(lr)
+
+Args:
+    close (pd.Series): Series of 'close's
+    length (int): It's period.  Default: 14
+    offset (int): How many periods to offset the result.  Default: 0
+    talib (bool): If TA Lib is installed and talib is True, Returns the TA Lib
+        version. Default: False
+
+Kwargs:
+    angle (bool, optional): If True, returns the angle of the slope.
+        Default: False.
+    degrees (bool, optional): If True, returns the angle in degrees;
+        if False, in radians. Default: True (matches TA-Lib convention).
+    intercept (bool, optional): If True, returns the angle of the slope in
+        radians. Default: False.
+    r (bool, optional): If True, returns it's correlation 'r'. Default: False.
+    slope (bool, optional): If True, returns the slope. Default: False.
+    tsf (bool, optional): If True, returns the Time Series Forecast value.
+        Default: False.
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series: New feature generated.
+"""

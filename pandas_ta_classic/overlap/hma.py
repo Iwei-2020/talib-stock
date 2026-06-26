@@ -1,0 +1,83 @@
+# Hull Moving Average (HMA)
+from typing import Any
+
+import numpy as np
+from pandas import Series
+
+from pandas_ta_classic.utils import apply_fill, apply_offset, get_offset, verify_series
+from pandas_ta_classic.utils._core import _pos_int, nan_on_short_input
+
+from .wma import wma
+
+
+@nan_on_short_input
+def hma(
+    close: Series,
+    length: int | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: Hull Moving Average (HMA)"""
+    # Validate Arguments
+    length = _pos_int(length, 10, "length", gt=1)  # the half-length WMA needs length >= 2
+    close = verify_series(close, length)
+    offset = get_offset(offset)
+
+    if close is None:
+        return None
+
+    # Calculate Result
+    half_length = int(length / 2)
+    sqrt_length = int(np.sqrt(length))
+
+    wmaf = wma(close=close, length=half_length)
+    wmas = wma(close=close, length=length)
+    if wmaf is None or wmas is None:
+        return None
+    hma = wma(close=2 * wmaf - wmas, length=sqrt_length)
+    if hma is None:
+        return None
+
+    # Offset
+    hma = apply_offset(hma, offset)
+
+    hma = apply_fill(hma, **kwargs)
+
+    # Name & Category
+    hma.name = f"HMA_{length}"
+    hma.category = "overlap"
+
+    return hma
+
+
+hma.__doc__ = """Hull Moving Average (HMA)
+
+The Hull Exponential Moving Average attempts to reduce or remove lag in moving
+averages.
+
+Sources:
+    https://alanhull.com/hull-moving-average
+
+Calculation:
+    Default Inputs:
+        length=10
+    WMA = Weighted Moving Average
+    half_length = int(0.5 * length)
+    sqrt_length = int(sqrt(length))
+
+    wmaf = WMA(close, half_length)
+    wmas = WMA(close, length)
+    HMA = WMA(2 * wmaf - wmas, sqrt_length)
+
+Args:
+    close (pd.Series): Series of 'close's
+    length (int): It's period. Default: 10
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series: New feature generated.
+"""
