@@ -1,0 +1,85 @@
+# Midpoint (MIDPOINT)
+from typing import Any
+
+from pandas import Series
+
+from pandas_ta_classic import Imports
+from pandas_ta_classic.utils import apply_fill, apply_offset, get_offset, verify_series
+from pandas_ta_classic.utils._core import _bool_param, _pos_int, nan_on_short_input
+
+
+@nan_on_short_input
+def midpoint(
+    close: Series,
+    length: int | None = None,
+    talib: bool | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: Midpoint"""
+    # Validate arguments
+    length = _pos_int(length, 2, "length")
+    min_periods = _pos_int(kwargs.get("min_periods"), length, "min_periods", gt=None, ge=0)
+    close = verify_series(close, max(length, min_periods))
+    offset = get_offset(offset)
+    mode_talib = _bool_param(talib, False, "talib")
+
+    if close is None:
+        return None
+
+    # Calculate Result
+    if Imports["talib"] and mode_talib:
+        from talib import MIDPOINT
+
+        midpoint = MIDPOINT(close, length)
+    else:
+        lowest = close.rolling(length, min_periods=min_periods).min()
+        highest = close.rolling(length, min_periods=min_periods).max()
+        midpoint = 0.5 * (lowest + highest)
+
+    # Offset
+    midpoint = apply_offset(midpoint, offset)
+
+    midpoint = apply_fill(midpoint, **kwargs)
+
+    # Name and Categorize it
+    midpoint.name = f"MIDPOINT_{length}"
+    midpoint.category = "overlap"
+
+    return midpoint
+
+
+midpoint.__doc__ = """Midpoint Over Period (MIDPOINT)
+
+MIDPOINT calculates the midpoint between the highest and lowest values of 
+the close price over a specified period. This indicator helps identify the 
+center of the price range and can be used to detect potential support and 
+resistance levels.
+
+Sources:
+    https://www.tradingview.com/support/solutions/43000594683-midpoint/
+    https://ta-lib.org/function.html?name=MIDPOINT
+
+Calculation:
+    Default Inputs:
+        length=2
+    
+    LOWEST = MIN(close, length)
+    HIGHEST = MAX(close, length)
+    MIDPOINT = (LOWEST + HIGHEST) / 2
+
+Args:
+    close (pd.Series): Series of 'close's
+    length (int): Its period. Default: 2
+    talib (bool): If TA Lib is installed and talib is True, Returns the TA Lib
+        version. Default: False
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    min_periods (int, optional): Minimum number of observations required. Default: length
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series: New feature generated.
+"""

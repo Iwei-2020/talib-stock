@@ -1,0 +1,89 @@
+# Midprice (MIDPRICE)
+from typing import Any
+
+from pandas import Series
+
+from pandas_ta_classic import Imports
+from pandas_ta_classic.utils import apply_fill, apply_offset, get_offset, verify_series
+from pandas_ta_classic.utils._core import _bool_param, _pos_int, nan_on_short_input
+
+
+@nan_on_short_input
+def midprice(
+    high: Series,
+    low: Series,
+    length: int | None = None,
+    talib: bool | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: Midprice"""
+    # Validate arguments
+    length = _pos_int(length, 2, "length")
+    min_periods = _pos_int(kwargs.get("min_periods"), length, "min_periods", gt=None, ge=0)
+    _length = max(length, min_periods)
+    high = verify_series(high, _length)
+    low = verify_series(low, _length)
+    offset = get_offset(offset)
+    mode_talib = _bool_param(talib, False, "talib")
+
+    if high is None or low is None:
+        return None
+
+    # Calculate Result
+    if Imports["talib"] and mode_talib:
+        from talib import MIDPRICE
+
+        midprice = MIDPRICE(high, low, length)
+    else:
+        lowest_low = low.rolling(length, min_periods=min_periods).min()
+        highest_high = high.rolling(length, min_periods=min_periods).max()
+        midprice = 0.5 * (lowest_low + highest_high)
+
+    # Offset
+    midprice = apply_offset(midprice, offset)
+
+    midprice = apply_fill(midprice, **kwargs)
+
+    # Name and Categorize it
+    midprice.name = f"MIDPRICE_{length}"
+    midprice.category = "overlap"
+
+    return midprice
+
+
+midprice.__doc__ = """Midpoint Price Over Period (MIDPRICE)
+
+MIDPRICE calculates the midpoint between the highest high and lowest low 
+over a specified period. Similar to MIDPOINT but uses high and low prices 
+instead of close prices. This provides a measure of the center of the 
+price range and is useful for identifying equilibrium levels.
+
+Sources:
+    https://www.tradingview.com/support/solutions/43000594684-midprice/
+    https://ta-lib.org/function.html?name=MIDPRICE
+
+Calculation:
+    Default Inputs:
+        length=2
+    
+    LOWEST_LOW = MIN(low, length)
+    HIGHEST_HIGH = MAX(high, length)
+    MIDPRICE = (LOWEST_LOW + HIGHEST_HIGH) / 2
+
+Args:
+    high (pd.Series): Series of 'high's
+    low (pd.Series): Series of 'low's
+    length (int): Its period. Default: 2
+    talib (bool): If TA Lib is installed and talib is True, Returns the TA Lib
+        version. Default: False
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    min_periods (int, optional): Minimum number of observations required. Default: length
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series: New feature generated.
+"""
