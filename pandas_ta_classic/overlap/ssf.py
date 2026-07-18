@@ -1,0 +1,122 @@
+# Super Smoother Filter (SSF)
+from typing import Any
+
+import numpy as np
+from pandas import Series
+
+from pandas_ta_classic.utils import apply_fill, apply_offset, get_offset, verify_series
+from pandas_ta_classic.utils._core import _pos_int, nan_on_short_input, skip_leading_nan
+from pandas_ta_classic.utils._njit import njit
+
+
+@njit(cache=True)
+def _ssf2_loop(c_arr, ssf_arr, m, c1, b1, a1):
+    for i in range(2, m):
+        ssf_arr[i] = c1 * c_arr[i] + b1 * ssf_arr[i - 1] + a1 * ssf_arr[i - 2]
+    return ssf_arr
+
+
+@njit(cache=True)
+def _ssf3_loop(c_arr, ssf_arr, m, c1, c2, c3, c4):
+    for i in range(3, m):
+        ssf_arr[i] = c1 * c_arr[i] + c2 * ssf_arr[i - 1] + c3 * ssf_arr[i - 2] + c4 * ssf_arr[i - 3]
+    return ssf_arr
+
+
+@nan_on_short_input
+@skip_leading_nan("close")
+def ssf(
+    close: Series,
+    length: int | None = None,
+    poles: int | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: Ehler's Super Smoother Filter (SSF)"""
+    # Validate Arguments
+    length = _pos_int(length, 10, "length")
+    poles = _pos_int(poles, 2, "poles")
+    if poles not in (2, 3):
+        raise ValueError(f"ssf() poles must be 2 or 3, got {poles!r}")
+    close = verify_series(close, length)
+    offset = get_offset(offset)
+
+    if close is None:
+        return None
+
+    # Calculate Result
+    m = close.size
+    c_arr = close.to_numpy(dtype=float)
+    ssf_arr = c_arr.copy()
+
+    if poles == 3:
+        x = np.pi / length  # x = PI / n
+        a0 = np.exp(-x)  # e^(-x)
+        b0 = 2 * a0 * np.cos(np.sqrt(3) * x)  # 2e^(-x)*cos(3^(.5) * x)
+        c0 = a0 * a0  # e^(-2x)
+
+        c4 = c0 * c0  # e^(-4x)
+        c3 = -c0 * (1 + b0)  # -e^(-2x) * (1 + 2e^(-x)*cos(3^(.5) * x))
+        c2 = c0 + b0  # e^(-2x) + 2e^(-x)*cos(3^(.5) * x)
+        c1 = 1 - c2 - c3 - c4
+
+        _ssf3_loop(c_arr, ssf_arr, m, c1, c2, c3, c4)
+
+    else:  # poles == 2
+        x = np.pi * np.sqrt(2) / length  # x = PI * 2^(.5) / n
+        a0 = np.exp(-x)  # e^(-x)
+        a1 = -a0 * a0  # -e^(-2x)
+        b1 = 2 * a0 * np.cos(x)  # 2e^(-x)*cos(x)
+        c1 = 1 - a1 - b1  # e^(-2x) - 2e^(-x)*cos(x) + 1
+
+        _ssf2_loop(c_arr, ssf_arr, m, c1, b1, a1)
+
+    ssf = Series(ssf_arr, index=close.index)
+
+    # Offset
+    ssf = apply_offset(ssf, offset)
+
+    ssf = apply_fill(ssf, **kwargs)
+
+    # Name & Category
+    ssf.name = f"SSF_{length}_{poles}"
+    ssf.category = "overlap"
+
+    return ssf
+
+
+ssf.__doc__ = """Ehler's Super Smoother Filter (SSF) © 2013
+
+John F. Ehlers's solution to reduce lag and remove aliasing noise with his
+research in aerospace analog filter design. This indicator comes with two
+versions determined by the keyword poles. By default, it uses two poles but
+there is an option for three poles. Since SSF is a (Resursive) Digital Filter,
+the number of poles determine how many prior recursive SSF bars to include in
+the design of the filter. So two poles uses two prior SSF bars and three poles
+uses three prior SSF bars for their filter calculations.
+
+Sources:
+    http://www.stockspotter.com/files/PredictiveIndicators.pdf
+    https://www.tradingview.com/script/VdJy0yBJ-Ehlers-Super-Smoother-Filter/
+    https://www.mql5.com/en/code/588
+    https://www.mql5.com/en/code/589
+
+Calculation:
+    Default Inputs:
+        length=10, poles=[2, 3]
+
+    See the source code or Sources listed above.
+
+Args:
+    close (pd.Series): Series of 'close's
+    length (int): It's period. Default: 10
+    poles (int): The number of poles to use, either 2 or 3. Default: 2
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series: New feature generated.
+"""

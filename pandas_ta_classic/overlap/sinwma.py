@@ -1,0 +1,78 @@
+# Sine Weighted Moving Average (SINWMA)
+from typing import Any
+
+import numpy as np
+from pandas import Series
+
+from pandas_ta_classic.utils import apply_fill, apply_offset, get_offset, verify_series
+from pandas_ta_classic.utils._core import _pos_int, _sliding_weighted_ma, nan_on_short_input
+
+
+@nan_on_short_input
+def sinwma(
+    close: Series,
+    length: int | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: Sine Weighted Moving Average (SINWMA) by Everget of TradingView"""
+    # Validate Arguments
+    length = _pos_int(length, 14, "length")
+    close = verify_series(close, length)
+    offset = get_offset(offset)
+
+    if close is None:
+        return None
+
+    # Calculate Result
+    sines = np.array([np.sin((i + 1) * np.pi / (length + 1)) for i in range(length)])
+    w = sines / sines.sum()
+
+    sinwma = _sliding_weighted_ma(close, length, w)
+
+    # Offset
+    sinwma = apply_offset(sinwma, offset)
+
+    sinwma = apply_fill(sinwma, **kwargs)
+
+    # Name & Category
+    sinwma.name = f"SINWMA_{length}"
+    sinwma.category = "overlap"
+
+    return sinwma
+
+
+sinwma.__doc__ = """Sine Weighted Moving Average (SWMA)
+
+A weighted average using sine cycles. The middle term(s) of the average have the
+highest weight(s).
+
+Source:
+    https://www.tradingview.com/script/6MWFvnPO-Sine-Weighted-Moving-Average/
+    Author: Everget (https://www.tradingview.com/u/everget/)
+
+Calculation:
+    Default Inputs:
+        length=10
+
+    def weights(w):
+        def _compute(x):
+            return np.dot(w * x)
+        return _compute
+
+    sines = Series([sin((i + 1) * pi / (length + 1)) for i in range(0, length)])
+    w = sines / sines.sum()
+    SINWMA = close.rolling(length, min_periods=length).apply(weights(w), raw=True)
+
+Args:
+    close (pd.Series): Series of 'close's
+    length (int): It's period. Default: 14
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series: New feature generated.
+"""
