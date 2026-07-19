@@ -1,0 +1,103 @@
+# Volume Weighted Average Price (VWAP)
+import logging
+from typing import Any
+
+from pandas import DatetimeIndex, Series
+
+from pandas_ta_classic.utils import (
+    apply_fill,
+    apply_offset,
+    get_offset,
+    is_datetime_ordered,
+    verify_series,
+)
+from pandas_ta_classic.utils._core import _str_param, nan_on_short_input
+
+from .hlc3 import hlc3
+
+logger = logging.getLogger(__name__)
+
+
+@nan_on_short_input
+def vwap(
+    high: Series,
+    low: Series,
+    close: Series,
+    volume: Series,
+    anchor: str | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: Volume Weighted Average Price (VWAP)"""
+    # Validate Arguments
+    high = verify_series(high)
+    low = verify_series(low)
+    close = verify_series(close)
+    volume = verify_series(volume)
+    anchor = _str_param(anchor, "D", "anchor", lower=False).upper()
+    offset = get_offset(offset)
+
+    if high is None or low is None or close is None or volume is None:
+        return None
+    if not isinstance(close.index, DatetimeIndex):
+        # anchoring groups rows by calendar period; without timestamps this used to raise
+        # AttributeError: 'RangeIndex' object has no attribute 'to_period'
+        raise TypeError(f"vwap() needs a DatetimeIndex to anchor by {anchor!r}, got {type(close.index).__name__}")
+
+    typical_price = hlc3(high=high, low=low, close=close)
+    if not is_datetime_ordered(volume):
+        logger.warning("VWAP volume series is not datetime ordered. Results may not be as expected.")
+    if not is_datetime_ordered(typical_price):
+        logger.warning("VWAP price series is not datetime ordered. Results may not be as expected.")
+
+    # Calculate Result
+    wp = typical_price * volume
+    vwap = wp.groupby(wp.index.to_period(anchor), observed=True).cumsum()
+    vwap /= volume.groupby(volume.index.to_period(anchor), observed=True).cumsum()
+
+    # Offset
+    vwap = apply_offset(vwap, offset)
+
+    vwap = apply_fill(vwap, **kwargs)
+
+    # Name & Category
+    vwap.name = f"VWAP_{anchor}"
+    vwap.category = "overlap"
+
+    return vwap
+
+
+vwap.__doc__ = """Volume Weighted Average Price (VWAP)
+
+The Volume Weighted Average Price that measures the average typical price
+by volume.  It is typically used with intraday charts to identify general
+direction.
+
+Sources:
+    https://www.tradingview.com/wiki/Volume_Weighted_Average_Price_(VWAP)
+    https://www.tradingtechnologies.com/help/x-study/technical-indicator-definitions/volume-weighted-average-price-vwap/
+    https://stockcharts.com/school/doku.php?id=chart_school:technical_indicators:vwap_intraday
+
+Calculation:
+    tp = typical_price = hlc3(high, low, close)
+    tpv = tp * volume
+    VWAP = tpv.cumsum() / volume.cumsum()
+
+Args:
+    high (pd.Series): Series of 'high's
+    low (pd.Series): Series of 'low's
+    close (pd.Series): Series of 'close's
+    volume (pd.Series): Series of 'volume's
+    anchor (str): How to anchor VWAP. Depending on the index values, it will
+        implement various Timeseries Offset Aliases as listed here:
+        https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#timeseries-offset-aliases
+        Default: "D".
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series: New feature generated.
+"""

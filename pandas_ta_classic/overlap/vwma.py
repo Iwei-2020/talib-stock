@@ -1,0 +1,72 @@
+# Volume Weighted Moving Average (VWMA)
+from typing import Any
+
+from pandas import Series
+
+from pandas_ta_classic.utils import apply_fill, apply_offset, get_offset, verify_series
+from pandas_ta_classic.utils._core import _pos_int, nan_on_short_input
+
+from .sma import sma
+
+
+@nan_on_short_input
+def vwma(
+    close: Series,
+    volume: Series,
+    length: int | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: Volume Weighted Moving Average (VWMA)"""
+    # Validate Arguments
+    length = _pos_int(length, 10, "length")
+    close = verify_series(close, length)
+    volume = verify_series(volume, length)
+    offset = get_offset(offset)
+
+    if close is None or volume is None:
+        return None
+
+    # Calculate Result
+    pv = close * volume
+    vwma = sma(close=pv, length=length) / sma(close=volume, length=length)
+
+    # Offset
+    vwma = apply_offset(vwma, offset)
+
+    vwma = apply_fill(vwma, **kwargs)
+
+    # Name & Category
+    vwma.name = f"VWMA_{length}"
+    vwma.category = "overlap"
+
+    return vwma
+
+
+vwma.__doc__ = """Volume Weighted Moving Average (VWMA)
+
+Volume Weighted Moving Average.
+
+Sources:
+    https://www.motivewave.com/studies/volume_weighted_moving_average.htm
+
+Calculation:
+    Default Inputs:
+        length=10
+    SMA = Simple Moving Average
+    pv = close * volume
+    VWMA = SMA(pv, length) / SMA(volume, length)
+
+Args:
+    close (pd.Series): Series of 'close's
+    volume (pd.Series): Series of 'volume's
+    length (int): It's period. Default: 10
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series: New feature generated.
+"""
