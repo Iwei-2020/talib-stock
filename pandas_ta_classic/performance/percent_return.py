@@ -1,0 +1,72 @@
+# Percent Return (PERCENT_RETURN)
+from typing import Any
+
+from pandas import Series
+
+from pandas_ta_classic.utils import apply_fill, apply_offset, get_offset, verify_series
+from pandas_ta_classic.utils._core import _bool_param, _pos_int, nan_on_short_input
+
+
+@nan_on_short_input
+def percent_return(
+    close: Series,
+    length: int | None = None,
+    cumulative: bool | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: Percent Return"""
+    # Validate Arguments
+    length = _pos_int(length, 1, "length")
+    cumulative = _bool_param(cumulative, False, "cumulative")
+    close = verify_series(close, length)
+    offset = get_offset(offset)
+
+    if close is None:
+        return None
+
+    # Calculate Result
+    if cumulative:
+        pct_return = (close / close.iloc[0]) - 1
+    else:
+        pct_return = (close / close.shift(length)) - 1
+
+    # Offset
+    pct_return = apply_offset(pct_return, offset)
+
+    pct_return = apply_fill(pct_return, **kwargs)
+
+    # Name & Category
+    pct_return.name = f"{'CUM' if cumulative else ''}PCTRET_{length}"
+    pct_return.category = "performance"
+
+    return pct_return
+
+
+percent_return.__doc__ = """Percent Return
+
+Calculates the percent return of a Series.
+See also: help(df.ta.percent_return) for additional **kwargs a valid 'df'.
+
+Sources:
+    https://stackoverflow.com/questions/31287552/logarithmic-returns-in-pandas-dataframe
+
+Calculation:
+    Default Inputs:
+        length=1, cumulative=False
+    PCTRET = close / close.shift(length) - 1
+    CUMPCTRET = PCTRET.cumsum() if cumulative
+
+Args:
+    close (pd.Series): Series of 'close's
+    length (int): It's period. Default: 1
+    cumulative (bool): If True, returns the cumulative returns. Default: False
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series: New feature generated.
+"""
