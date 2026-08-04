@@ -1,0 +1,72 @@
+# Pearson Correlation Coefficient (CORREL)
+from typing import Any
+
+from pandas import Series
+
+from pandas_ta_classic.utils import apply_fill, apply_offset, get_offset, verify_series
+from pandas_ta_classic.utils._core import _pos_int, nan_on_short_input
+
+
+@nan_on_short_input
+def correl(
+    close: Series,
+    benchmark: Series | None = None,
+    length: int | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: Pearson Correlation Coefficient"""
+    # Validate Arguments
+    length = _pos_int(length, 30, "length", gt=1)
+    min_periods = _pos_int(kwargs.get("min_periods"), length, "min_periods", gt=None, ge=0)
+    close = verify_series(close, max(length, min_periods))
+    benchmark = verify_series(benchmark, max(length, min_periods))
+    offset = get_offset(offset)
+
+    if close is None or benchmark is None:
+        return None
+
+    # Calculate Result
+    result = close.rolling(length, min_periods=min_periods).corr(benchmark)
+
+    # Offset
+    result = apply_offset(result, offset)
+
+    result = apply_fill(result, **kwargs)
+
+    # Name and Categorize it
+    result.name = f"CORREL_{length}"
+    result.category = "statistics"
+
+    return result
+
+
+correl.__doc__ = """Pearson Correlation Coefficient (CORREL)
+
+The Pearson Correlation Coefficient measures the linear relationship between
+two series over a rolling window.  Values range from -1 (perfect negative
+correlation) to +1 (perfect positive correlation).
+
+Sources:
+    https://www.investopedia.com/terms/c/correlationcoefficient.asp
+
+Calculation:
+    Default Inputs:
+        length=30
+    CORREL = close.rolling(length).corr(benchmark)
+
+Args:
+    close (pd.Series): Series of 'close's
+    benchmark (pd.Series): Series of benchmark 'close's
+    length (int): The period. Default: 30
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    min_periods (int): Minimum observations required. Default: length
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series: New feature generated.
+    None: If benchmark is not provided; enables df.ta.strategy("all") compatibility.
+"""

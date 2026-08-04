@@ -1,0 +1,75 @@
+# Median (MEDIAN)
+from typing import Any
+
+import numpy as np
+from pandas import Series
+
+from pandas_ta_classic.utils import apply_fill, apply_offset, get_offset, verify_series
+from pandas_ta_classic.utils._core import _pos_int, nan_on_short_input
+
+
+@nan_on_short_input
+def median(
+    close: Series,
+    length: int | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: Median"""
+    # Validate Arguments
+    length = _pos_int(length, 30, "length")
+    min_periods = _pos_int(kwargs.get("min_periods"), length, "min_periods", gt=None, ge=0)
+    close = verify_series(close, max(length, min_periods))
+    offset = get_offset(offset)
+
+    if close is None:
+        return None
+
+    # Pure numpy for cross-version determinism.
+    values = close.values.astype(np.float64)
+    n = len(values)
+    result_arr = np.full(n, np.nan, dtype=np.float64)
+    if n >= length:
+        windows = np.lib.stride_tricks.sliding_window_view(values, length)
+        result_arr[length - 1 :] = np.median(windows, axis=1)
+    if min_periods < length:
+        for pos in range(min_periods - 1, min(length - 1, n)):
+            result_arr[pos] = np.median(values[: pos + 1])
+    median = Series(result_arr, index=close.index, dtype=np.float64)
+
+    # Offset
+    median = apply_offset(median, offset)
+
+    median = apply_fill(median, **kwargs)
+
+    # Name & Category
+    median.name = f"MEDIAN_{length}"
+    median.category = "statistics"
+
+    return median
+
+
+median.__doc__ = """Rolling Median
+
+Rolling Median of over 'n' periods. Sibling of a Simple Moving Average.
+
+Sources:
+    https://www.incrediblecharts.com/indicators/median_price.php
+
+Calculation:
+    Default Inputs:
+        length=30
+    MEDIAN = close.rolling(length).median()
+
+Args:
+    close (pd.Series): Series of 'close's
+    length (int): It's period. Default: 30
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series: New feature generated.
+"""
