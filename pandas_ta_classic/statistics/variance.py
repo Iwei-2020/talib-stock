@@ -1,0 +1,112 @@
+# Variance (VARIANCE)
+from typing import Any
+
+import numpy as np
+from pandas import Series
+
+from pandas_ta_classic import Imports
+from pandas_ta_classic.utils import apply_fill, apply_offset, get_offset, verify_series
+from pandas_ta_classic.utils._core import _bool_param, _pos_int, nan_on_short_input
+
+
+def _numpy_rolling_variance(values, length, ddof, min_periods):
+    """Compute rolling variance using NumPy, respecting *min_periods*.
+
+    For windows of size *length* and beyond the standard
+    :func:`numpy.lib.stride_tricks.sliding_window_view` approach is used.
+    When *min_periods* is smaller than *length* the leading partial windows
+    are filled individually so that they are not left as ``NaN``.
+
+    Args:
+        values (np.ndarray): 1-D float64 price array.
+        length (int): Rolling window size.
+        ddof (int): Delta degrees of freedom passed to ``ndarray.var``.
+        min_periods (int): Minimum number of observations required to produce
+            a non-NaN result.
+
+    Returns:
+        np.ndarray: Rolling variance array of the same length as *values*.
+    """
+    n = len(values)
+    result_arr = np.full(n, np.nan, dtype=np.float64)
+    if n >= length:
+        windows = np.lib.stride_tricks.sliding_window_view(values, length)
+        with np.errstate(invalid="ignore", divide="ignore", over="ignore"):
+            result_arr[length - 1 :] = windows.var(axis=1, ddof=ddof)
+    if min_periods < length:
+        for pos in range(min_periods - 1, min(length - 1, n)):
+            w = values[: pos + 1]
+            with np.errstate(invalid="ignore", divide="ignore", over="ignore"):
+                result_arr[pos] = w.var(ddof=ddof) if len(w) > ddof else np.nan
+    return result_arr
+
+
+@nan_on_short_input
+def variance(
+    close: Series,
+    length: int | None = None,
+    ddof: int | None = None,
+    talib: bool | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: Variance"""
+    # Validate Arguments
+    length = _pos_int(length, 30, "length", gt=1)
+    ddof = _pos_int(ddof, 0, "ddof", gt=None, ge=0, lt=length)
+    min_periods = _pos_int(kwargs.get("min_periods"), length, "min_periods", gt=None, ge=0)
+    close = verify_series(close, max(length, min_periods))
+    offset = get_offset(offset)
+    mode_talib = _bool_param(talib, False, "talib")
+
+    if close is None:
+        return None
+
+    # Calculate Result
+    # TA-Lib cannot express a non-default ddof; run natively instead of ignoring it
+    if Imports["talib"] and mode_talib and ddof == 0:
+        from talib import VAR
+
+        variance = VAR(close, length)
+    else:
+        result_arr = _numpy_rolling_variance(close.values.astype(np.float64), length, ddof, min_periods)
+        variance = Series(result_arr, index=close.index, dtype=np.float64)
+
+    # Offset
+    variance = apply_offset(variance, offset)
+
+    variance = apply_fill(variance, **kwargs)
+
+    # Name & Category
+    variance.name = f"VAR_{length}"
+    variance.category = "statistics"
+
+    return variance
+
+
+variance.__doc__ = """Rolling Variance
+
+Sources:
+
+Calculation:
+    Default Inputs:
+        length=30
+    VARIANCE = close.rolling(length).var()
+
+Args:
+    close (pd.Series): Series of 'close's
+    length (int): It's period. Default: 30
+    ddof (int): Delta Degrees of Freedom.
+                The divisor used in calculations is N - ddof,
+                where N represents the number of elements. Default: 0
+    talib (bool): If TA Lib is installed and talib is True, Returns the TA Lib
+        version. Default: False
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series: New feature generated.
+"""

@@ -1,0 +1,143 @@
+# TOS Standard Deviation All (TOS_STDEVALL)
+import warnings
+from itertools import pairwise
+from typing import Any
+
+import numpy as np
+from pandas import DataFrame, DatetimeIndex, Series
+
+from pandas_ta_classic.utils import apply_fill, apply_offset, get_offset, verify_series
+from pandas_ta_classic.utils._core import _bool_param, _pos_int, nan_on_short_input, skip_leading_nan
+
+
+@nan_on_short_input
+@skip_leading_nan("close")
+def tos_stdevall(
+    close: Series,
+    length: int | None = None,
+    stds: list[int] | None = None,
+    ddof: int | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> DataFrame | None:
+    """Indicator: TD Ameritrade's Think or Swim Standard Deviation All"""
+    # Validate Arguments
+    # `lookahead=False` asks for output a bar could have produced in real time.
+    # There is no such mode here -- the regression is fitted over the whole
+    # window -- so decline instead of handing back forward-looking values under
+    # a keyword that promises the opposite.
+    if not _bool_param(kwargs.get("lookahead"), True, "lookahead"):
+        warnings.warn(
+            "tos_stdevall() has no causal mode: one linear regression is fitted over the whole window, so every point depends on later bars. "
+            "Returning None because lookahead=False was requested.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return None
+
+    if close is None:
+        return None
+    if stds is None:
+        stds = [1, 2, 3]
+    elif not (isinstance(stds, list) and stds):
+        raise ValueError(f"tos_stdevall() stds must be a non-empty list of numbers, got {stds!r}")
+    if min(stds) <= 0:
+        raise ValueError(f"tos_stdevall() stds must all be > 0, got {stds!r}")
+    if not all(i < j for i, j in pairwise(stds)):
+        stds = stds[::-1]
+    offset = get_offset(offset)
+
+    _props = "TOS_STDEVALL"
+    if length is None:
+        length = close.size
+    else:
+        length = _pos_int(length, None, "length", gt=2)  # None (whole series) is handled above
+        close = close.iloc[-length:]
+        _props = f"{_props}_{length}"
+
+    ddof = _pos_int(ddof, 1, "ddof", gt=None, ge=0, lt=length)
+
+    # A linear fit needs at least two points.
+    close = verify_series(close, max(length, 2))
+
+    if close is None:
+        return None
+
+    # Calculate Result
+    X = src_index = close.index
+    if isinstance(close.index, DatetimeIndex):
+        X = np.arange(length)
+        close = np.array(close)
+
+    m, b = np.polyfit(X, close, 1)
+    lr = Series(m * X + b, index=src_index)
+    stdev = np.std(close, ddof=ddof)
+
+    # Name and Categorize it
+    df = DataFrame({f"{_props}_LR": lr}, index=src_index)
+    for i in stds:
+        df[f"{_props}_L_{i}"] = lr - i * stdev
+        df[f"{_props}_U_{i}"] = lr + i * stdev
+        df[f"{_props}_L_{i}"].name = df[f"{_props}_U_{i}"].name = f"{_props}"
+        df[f"{_props}_L_{i}"].category = df[f"{_props}_U_{i}"].category = "statistics"
+
+    # Offset
+    df = apply_offset(df, offset)
+
+    df = apply_fill(df, **kwargs)
+
+    # Prepare DataFrame to return
+    df.name = f"{_props}"
+    df.category = "statistics"
+
+    return df
+
+
+tos_stdevall.__doc__ = """TD Ameritrade's Think or Swim Standard Deviation All (TOS_STDEV)
+
+A port of TD Ameritrade's Think or Swim Standard Deviation All indicator which
+returns the standard deviation of data for the entire plot or for the interval
+of the last bars defined by the length parameter.
+
+Warning:
+    Not causal. A single linear regression is fitted over the whole window, so
+    the value at bar t depends on bars after t and changes when more data is
+    appended. Use it to describe a series, not to generate signals: a backtest
+    driven by it will be optimistic. There is no lookahead=False mode; for a
+    causal alternative use a rolling stdev() or linreg(). Passing
+    lookahead=False emits a UserWarning and returns None, so a pipeline that
+    asks for backtest-safe output does not silently receive this one.
+
+Sources:
+    https://tlc.thinkorswim.com/center/reference/thinkScript/Functions/Statistical/StDevAll
+
+Calculation:
+    Default Inputs:
+        length=None (All), stds=[1, 2, 3], ddof=1
+    LR = Linear Regression
+    STDEV = Standard Deviation
+
+    LR = LR(close, length)
+    STDEV = STDEV(close, length, ddof)
+    for level in stds:
+        LOWER = LR - level * STDEV
+        UPPER = LR + level * STDEV
+
+Args:
+    close (pd.Series): Series of 'close's
+    length (int): Bars from current bar. Default: None
+    stds (list): List of Standard Deviations in increasing order from the
+                 central Linear Regression line. Default: [1,2,3]
+    ddof (int): Delta Degrees of Freedom.
+                The divisor used in calculations is N - ddof,
+                where N represents the number of elements. Default: 1
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.DataFrame: Central LR, Pairs of Lower and Upper LR Lines based on
+        mulitples of the standard deviation. Default: returns 7 columns.
+"""

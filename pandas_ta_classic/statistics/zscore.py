@@ -1,0 +1,78 @@
+# Z Score (ZSCORE)
+from typing import Any
+
+import numpy as np
+from pandas import Series
+
+from pandas_ta_classic.utils import apply_fill, apply_offset, get_offset, verify_series
+from pandas_ta_classic.utils._core import _pos_float, _pos_int, nan_on_short_input
+
+
+@nan_on_short_input
+def zscore(
+    close: Series,
+    length: int | None = None,
+    std: float | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: Z Score"""
+    # Validate Arguments
+    length = _pos_int(length, 30, "length", gt=1)
+    std = _pos_float(std, 1, "std", gt=1)
+    close = verify_series(close, length)
+    offset = get_offset(offset)
+
+    if close is None:
+        return None
+
+    # Pure numpy for cross-version determinism.
+    values = close.values.astype(np.float64)
+    n = len(values)
+    result_arr = np.full(n, np.nan, dtype=np.float64)
+    if n >= length:
+        windows = np.lib.stride_tricks.sliding_window_view(values, length)
+        window_mean = windows.mean(axis=1)
+        window_std = windows.std(axis=1, ddof=1)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            result_arr[length - 1 :] = (values[length - 1 :] - window_mean) / (std * window_std)
+    zscore = Series(result_arr, index=close.index, dtype=np.float64)
+
+    # Offset
+    zscore = apply_offset(zscore, offset)
+
+    zscore = apply_fill(zscore, **kwargs)
+
+    # Name & Category
+    zscore.name = f"ZS_{length}"
+    zscore.category = "statistics"
+
+    return zscore
+
+
+zscore.__doc__ = """Rolling Z Score
+
+Sources:
+
+Calculation:
+    Default Inputs:
+        length=30, std=1
+    SMA = Simple Moving Average
+    STDEV = Standard Deviation
+    std = std * STDEV(close, length)
+    mean = SMA(close, length)
+    ZSCORE = (close - mean) / std
+
+Args:
+    close (pd.Series): Series of 'close's
+    length (int): It's period. Default: 30
+    std (float): It's period. Default: 1
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series: New feature generated.
+"""
