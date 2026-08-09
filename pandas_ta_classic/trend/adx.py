@@ -1,0 +1,197 @@
+# Average Directional Movement Index (ADX)
+from typing import Any
+
+from pandas import DataFrame, Series
+
+from pandas_ta_classic import Imports
+from pandas_ta_classic.overlap.ma import ma
+from pandas_ta_classic.utils import (
+    apply_fill,
+    apply_offset,
+    get_drift,
+    get_offset,
+    verify_series,
+    zero,
+)
+from pandas_ta_classic.utils._core import _bool_param, _number, _pos_int, _str_param, nan_on_short_input
+from pandas_ta_classic.utils._wilder import wilder_di
+from pandas_ta_classic.volatility.atr import atr
+from pandas_ta_classic.volatility.true_range import true_range
+
+
+@nan_on_short_input
+def adx(
+    high: Series,
+    low: Series,
+    close: Series,
+    length: int | None = None,
+    lensig: int | None = None,
+    scalar: float | None = None,
+    mamode: str | None = None,
+    talib: bool | None = None,
+    drift: int | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> DataFrame | None:
+    """Indicator: ADX"""
+    # Validate Arguments
+    length = _pos_int(length, 14, "length")
+    lensig = _pos_int(lensig, length, "lensig")
+    mamode = _str_param(mamode, "rma", "mamode")
+    scalar = _number(scalar, 100, "scalar")
+    high = verify_series(high, length)
+    low = verify_series(low, length)
+    close = verify_series(close, length)
+    drift = get_drift(drift)
+    offset = get_offset(offset)
+    mode_talib = _bool_param(talib, False, "talib")
+
+    if high is None or low is None or close is None:
+        return None
+
+    # Calculate Result
+    # TA-Lib cannot express a non-default drift, mamode, scalar; run natively instead of ignoring it
+    if Imports["talib"] and mode_talib and scalar == 100 and mamode == "rma" and drift == 1:
+        from talib import ADX, MINUS_DI, PLUS_DI
+
+        adx_arr = Series(ADX(high, low, close, length), index=close.index)
+        dmp = Series(PLUS_DI(high, low, close, length), index=close.index)
+        dmn = Series(MINUS_DI(high, low, close, length), index=close.index)
+    else:
+        up = high - high.shift(drift)  # high.diff(drift)
+        dn = low.shift(drift) - low  # low.diff(-drift).shift(drift)
+
+        pos = ((up > dn) & (up > 0)) * up
+        neg = ((dn > up) & (dn > 0)) * dn
+
+        pos = pos.apply(zero)
+        neg = neg.apply(zero)
+
+        if mamode == "rma":
+            # Wilder's smoothing with TA-Lib's seeding (sum of the first
+            # length-1 values). Smoothing DM and TR with the SMA-seeded rma
+            # instead started every DI/DX/ADX value from a different level
+            # and left ADX up to ~50% off TA-Lib in the first bars.
+            tr = true_range(high=high, low=low, close=close, drift=drift)
+            if tr is None:
+                return None
+            dmp, dmn = wilder_di(pos, neg, tr, length, scalar)
+        else:
+            atr_ = atr(high=high, low=low, close=close, length=length)
+            if atr_ is None:
+                return None
+            k = scalar / atr_
+            _dmp_ma = ma(mamode, pos, length=length)
+            if _dmp_ma is None:
+                return None
+            _dmn_ma = ma(mamode, neg, length=length)
+            if _dmn_ma is None:
+                return None
+            dmp = k * _dmp_ma
+            dmn = k * _dmn_ma
+
+        dx = scalar * (dmp - dmn).abs() / (dmp + dmn)
+        adx_arr = ma(mamode, dx, length=lensig)
+        if adx_arr is None:
+            return None
+
+    # Offset
+    dmp, dmn, adx_arr = apply_offset([dmp, dmn, adx_arr], offset)
+
+    adx_arr, dmp, dmn = apply_fill([adx_arr, dmp, dmn], **kwargs)
+
+    # Name and Categorize it
+    adx_arr.name = f"ADX_{lensig}"
+    dmp.name = f"DMP_{length}"
+    dmn.name = f"DMN_{length}"
+
+    adx_arr.category = dmp.category = dmn.category = "trend"
+
+    # Prepare DataFrame to return
+    data = {adx_arr.name: adx_arr, dmp.name: dmp, dmn.name: dmn}
+    adxdf = DataFrame(data)
+    adxdf.name = f"ADX_{lensig}"
+    adxdf.category = "trend"
+
+    return adxdf
+
+
+adx.__doc__ = """Average Directional Movement (ADX)
+
+Average Directional Movement is meant to quantify trend strength by measuring
+the amount of movement in a single direction.
+
+Sources:
+    https://www.tradingtechnologies.com/help/x-study/technical-indicator-definitions/average-directional-movement-adx/
+    TA Lib Correlation: >99%
+
+Calculation:
+    DMI ADX TREND 2.0 by @TraderR0BERT, NETWORTHIE.COM
+        //Created by @TraderR0BERT, NETWORTHIE.COM, last updated 01/26/2016
+        //DMI Indicator
+        //Resolution input option for higher/lower time frames
+        study(title="DMI ADX TREND 2.0", shorttitle="ADX TREND 2.0")
+
+        adxlen = input(14, title="ADX Smoothing")
+        dilen = input(14, title="DI Length")
+        thold = input(20, title="Threshold")
+
+        threshold = thold
+
+        //Script for Indicator
+        dirmov(len) =>
+            up = change(high)
+            down = -change(low)
+            truerange = rma(tr, len)
+            plus = fixnan(100 * rma(up > down and up > 0 ? up : 0, len) / truerange)
+            minus = fixnan(100 * rma(down > up and down > 0 ? down : 0, len) / truerange)
+            [plus, minus]
+
+        adx(dilen, adxlen) =>
+            [plus, minus] = dirmov(dilen)
+            sum = plus + minus
+            adx = 100 * rma(abs(plus - minus) / (sum == 0 ? 1 : sum), adxlen)
+            [adx, plus, minus]
+
+        [sig, up, down] = adx(dilen, adxlen)
+        osob=input(40,title="Exhaustion Level for ADX, default = 40")
+        col = sig >= sig[1] ? green : sig <= sig[1] ? red : gray
+
+        //Plot Definitions Current Timeframe
+        p1 = plot(sig, color=col, linewidth = 3, title="ADX")
+        p2 = plot(sig, color=col, style=circles, linewidth=3, title="ADX")
+        p3 = plot(up, color=blue, linewidth = 3, title="+DI")
+        p4 = plot(up, color=blue, style=circles, linewidth=3, title="+DI")
+        p5 = plot(down, color=fuchsia, linewidth = 3, title="-DI")
+        p6 = plot(down, color=fuchsia, style=circles, linewidth=3, title="-DI")
+        h1 = plot(threshold, color=black, linewidth =3, title="Threshold")
+
+        trender = (sig >= up or sig >= down) ? 1 : 0
+        bgcolor(trender>0?black:gray, transp=85)
+
+        //Alert Function for ADX crossing Threshold
+        Up_Cross = crossover(up, threshold)
+        alertcondition(Up_Cross, title="DMI+ cross", message="DMI+ Crossing Threshold")
+        Down_Cross = crossover(down, threshold)
+        alertcondition(Down_Cross, title="DMI- cross", message="DMI- Crossing Threshold")
+
+Args:
+    high (pd.Series): Series of 'high's
+    low (pd.Series): Series of 'low's
+    close (pd.Series): Series of 'close's
+    length (int): It's period. Default: 14
+    lensig (int): Signal Length. Like TradingView's default ADX. Default: length
+    scalar (float): How much to magnify. Default: 100
+    mamode (str): See ```help(ta.ma)```. Default: 'rma'
+    talib (bool): If TA Lib is installed and talib is True, Returns the TA Lib
+        version. Default: False
+    drift (int): The difference period. Default: 1
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.DataFrame: adx, dmp, dmn columns.
+"""

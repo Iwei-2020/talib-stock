@@ -1,0 +1,113 @@
+# Aroon (AROON)
+from typing import Any
+
+import numpy as np
+from pandas import DataFrame, Series
+
+from pandas_ta_classic import Imports
+from pandas_ta_classic.utils import apply_fill, apply_offset, get_offset, verify_series
+from pandas_ta_classic.utils._core import _bool_param, _number, _pos_int, _sliding_argextreme, nan_on_short_input, skip_leading_nan
+
+
+@nan_on_short_input
+@skip_leading_nan("high", "low")
+def aroon(
+    high: Series,
+    low: Series,
+    length: int | None = None,
+    scalar: float | None = None,
+    talib: bool | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> DataFrame | None:
+    """Indicator: Aroon & Aroon Oscillator"""
+    # Validate Arguments
+    length = _pos_int(length, 14, "length")
+    scalar = _number(scalar, 100, "scalar")
+    high = verify_series(high, length)
+    low = verify_series(low, length)
+    offset = get_offset(offset)
+    mode_talib = _bool_param(talib, False, "talib")
+
+    if high is None or low is None:
+        return None
+
+    # Calculate Result
+    # TA-Lib cannot express a non-default scalar; run natively instead of ignoring it
+    if Imports["talib"] and mode_talib and scalar == 100:
+        from talib import AROON, AROONOSC
+
+        aroon_down, aroon_up = AROON(high, low, length)
+        aroon_osc = AROONOSC(high, low, length)
+    else:
+        periods_from_hh = _sliding_argextreme(high, length + 1, np.argmax, reverse=True)
+        periods_from_ll = _sliding_argextreme(low, length + 1, np.argmin, reverse=True)
+
+        aroon_up = aroon_down = scalar
+        aroon_up *= 1 - (periods_from_hh / length)
+        aroon_down *= 1 - (periods_from_ll / length)
+        aroon_osc = aroon_up - aroon_down
+
+    aroon_up, aroon_down, aroon_osc = apply_fill([aroon_up, aroon_down, aroon_osc], **kwargs)
+
+    # Offset
+    aroon_up, aroon_down, aroon_osc = apply_offset([aroon_up, aroon_down, aroon_osc], offset)
+
+    # Name and Categorize it
+    aroon_up.name = f"AROONU_{length}"
+    aroon_down.name = f"AROOND_{length}"
+    aroon_osc.name = f"AROONOSC_{length}"
+
+    aroon_down.category = aroon_up.category = aroon_osc.category = "trend"
+
+    # Prepare DataFrame to return
+    data = {
+        aroon_down.name: aroon_down,
+        aroon_up.name: aroon_up,
+        aroon_osc.name: aroon_osc,
+    }
+    aroondf = DataFrame(data)
+    aroondf.name = f"AROON_{length}"
+    aroondf.category = aroon_down.category
+
+    return aroondf
+
+
+aroon.__doc__ = """Aroon & Aroon Oscillator (AROON)
+
+Aroon attempts to identify if a security is trending and how strong.
+
+Sources:
+    https://www.tradingview.com/wiki/Aroon
+    https://www.tradingtechnologies.com/help/x-study/technical-indicator-definitions/aroon-ar/
+
+Calculation:
+    Default Inputs:
+        length=1, scalar=100
+
+    recent_maximum_index(x): return int(np.argmax(x[::-1]))
+    recent_minimum_index(x): return int(np.argmin(x[::-1]))
+
+    periods_from_hh = high.rolling(length + 1).apply(recent_maximum_index, raw=True)
+    AROON_UP = scalar * (1 - (periods_from_hh / length))
+
+    periods_from_ll = low.rolling(length + 1).apply(recent_minimum_index, raw=True)
+    AROON_DN = scalar * (1 - (periods_from_ll / length))
+
+    AROON_OSC = AROON_UP - AROON_DN
+
+Args:
+    close (pd.Series): Series of 'close's
+    length (int): It's period. Default: 14
+    scalar (float): How much to magnify. Default: 100
+    talib (bool): If TA Lib is installed and talib is True, Returns the TA Lib
+        version. Default: False
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.DataFrame: aroon_up, aroon_down, aroon_osc columns.
+"""
