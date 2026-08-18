@@ -1,0 +1,83 @@
+# Linear Decay (DECAY)
+from typing import Any
+
+import numpy as np
+from pandas import DataFrame, Series
+
+from pandas_ta_classic.utils import apply_fill, apply_offset, get_offset, verify_series
+from pandas_ta_classic.utils._core import _pos_int, _str_param, nan_on_short_input
+
+
+@nan_on_short_input
+def decay(
+    close: Series,
+    kind: str | None = None,
+    length: int | None = None,
+    mode: str | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: Decay"""
+    # Validate Arguments
+    length = _pos_int(length, 5, "length")
+    mode = _str_param(mode, "linear", "mode", choices={"linear", "exp", "exponential"})
+    kind = _str_param(kind, "linear", "kind", choices={"linear", "exp", "exponential"})
+    close = verify_series(close, length)
+    offset = get_offset(offset)
+
+    if close is None:
+        return None
+
+    # Calculate Result
+    _mode = "L"
+    if mode in ("exp", "exponential") or kind in ("exp", "exponential"):
+        _mode = "EXP"
+        diff = close.shift(1) - np.exp(-length)
+    else:  # "linear"
+        diff = close.shift(1) - (1 / length)
+    diff.iloc[0] = close.iloc[0]
+    tdf = DataFrame({"close": close, "diff": diff, "0": 0})
+    ld = tdf.max(axis=1)
+
+    # Offset
+    ld = apply_offset(ld, offset)
+
+    ld = apply_fill(ld, **kwargs)
+
+    # Name and Categorize it
+    ld.name = f"{_mode}DECAY_{length}"
+    ld.category = "trend"
+
+    return ld
+
+
+decay.__doc__ = """Decay
+
+Creates a decay moving forward from prior signals like crosses. The default is
+"linear". Exponential is optional as "exponential" or "exp".
+
+Sources:
+    https://tulipindicators.org/decay
+
+Calculation:
+    Default Inputs:
+        length=5, mode=None
+
+    if mode == "exponential" or mode == "exp":
+        max(close, close[-1] - exp(-length), 0)
+    else:
+        max(close, close[-1] - (1 / length), 0)
+
+Args:
+    close (pd.Series): Series of 'close's
+    length (int): It's period. Default: 5
+    mode (str): If 'exp' then "exponential" decay. Default: 'linear'
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series: New feature generated.
+"""

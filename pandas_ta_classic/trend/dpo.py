@@ -1,0 +1,85 @@
+# Detrend Price Oscillator (DPO)
+from typing import Any
+
+from pandas import Series
+
+from pandas_ta_classic.overlap.sma import sma
+from pandas_ta_classic.utils import apply_fill, apply_offset, get_offset, verify_series
+from pandas_ta_classic.utils._core import _bool_param, _pos_int, nan_on_short_input
+
+
+@nan_on_short_input
+def dpo(
+    close: Series,
+    length: int | None = None,
+    centered: bool = True,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: Detrend Price Oscillator (DPO)"""
+    # Validate Arguments
+    length = _pos_int(length, 20, "length")
+    centered = _bool_param(centered, True, "centered")
+    close = verify_series(close, length)
+    offset = get_offset(offset)
+    if not _bool_param(kwargs.get("lookahead"), True, "lookahead"):
+        centered = False
+
+    if close is None:
+        return None
+
+    # Calculate Result
+    t = int(0.5 * length) + 1
+    ma = sma(close, length)
+    if ma is None:
+        return None
+
+    dpo = close - ma.shift(t)
+    if centered:
+        dpo = (close.shift(t) - ma).shift(-t)
+
+    # Offset
+    dpo = apply_offset(dpo, offset)
+
+    dpo = apply_fill(dpo, **kwargs)
+
+    # Name and Categorize it
+    dpo.name = f"DPO_{length}"
+    dpo.category = "trend"
+
+    return dpo
+
+
+dpo.__doc__ = """Detrend Price Oscillator (DPO)
+
+Is an indicator designed to remove trend from price and make it easier to
+identify cycles.
+
+Sources:
+    https://www.tradingview.com/scripts/detrendedpriceoscillator/
+    https://www.fidelity.com/learning-center/trading-investing/technical-analysis/technical-indicator-guide/dpo
+    http://stockcharts.com/school/doku.php?id=chart_school:technical_indicators:detrended_price_osci
+
+Calculation:
+    Default Inputs:
+        length=20, centered=True
+    SMA = Simple Moving Average
+    t = int(0.5 * length) + 1
+
+    DPO = close.shift(t) - SMA(close, length)
+    if centered:
+        DPO = DPO.shift(-t)
+
+Args:
+    close (pd.Series): Series of 'close's
+    length (int): It's period. Default: 20
+    centered (bool): Shift the dpo back by int(0.5 * length) + 1. Default: True
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series: New feature generated.
+"""
