@@ -1,0 +1,150 @@
+# Price Max (PMAX)
+from typing import Any
+
+import numpy as np
+from pandas import Series
+
+from pandas_ta_classic.overlap.ma import ma
+from pandas_ta_classic.utils import apply_fill, apply_offset, get_offset, verify_series
+from pandas_ta_classic.utils._core import _pos_float, _pos_int, _str_param, nan_on_short_input
+from pandas_ta_classic.utils._njit import njit
+from pandas_ta_classic.volatility.atr import atr
+
+
+@njit(cache=True)
+def _pmax_trend_arrays(close_arr, pmax_up_arr, pmax_down_arr):
+    """Compute PMAX trend direction and band arrays.
+
+    Iterates over ``close_arr`` updating the adaptive upper / lower ATR bands
+    and determining the per-bar trend direction (1 = uptrend, −1 = downtrend).
+
+    Args:
+        close_arr (np.ndarray): 1-D float close-price array.
+        pmax_up_arr (np.ndarray): Initial upper ATR band values (modified in
+            place).
+        pmax_down_arr (np.ndarray): Initial lower ATR band values (modified in
+            place).
+
+    Returns:
+        np.ndarray: PMAX values for each bar (``NaN`` for the first element).
+    """
+    n = len(close_arr)
+    trend_arr = np.ones(n, dtype=np.int64)
+    pmax_result = np.empty(n)
+    pmax_result[0] = np.nan
+    for i in range(1, n):
+        if close_arr[i - 1] > pmax_up_arr[i - 1]:
+            pmax_up_arr[i] = max(pmax_up_arr[i], pmax_up_arr[i - 1])
+        if close_arr[i - 1] < pmax_down_arr[i - 1]:
+            pmax_down_arr[i] = min(pmax_down_arr[i], pmax_down_arr[i - 1])
+        if close_arr[i] > pmax_down_arr[i - 1]:
+            trend_arr[i] = 1
+        elif close_arr[i] < pmax_up_arr[i - 1]:
+            trend_arr[i] = -1
+        else:
+            trend_arr[i] = trend_arr[i - 1]
+        pmax_result[i] = pmax_up_arr[i] if trend_arr[i] == 1 else pmax_down_arr[i]
+    return pmax_result
+
+
+@nan_on_short_input
+def pmax(
+    high: Series,
+    low: Series,
+    close: Series,
+    length: int | None = None,
+    multiplier: float | None = None,
+    mamode: str | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: PMAX (Price Max)"""
+    # Validate arguments
+    length = _pos_int(length, 10, "length")
+    multiplier = _pos_float(multiplier, 3.0, "multiplier")
+    mamode = _str_param(mamode, "ema", "mamode")
+    high = verify_series(high, length)
+    low = verify_series(low, length)
+    close = verify_series(close, length)
+    offset = get_offset(offset)
+
+    if high is None or low is None or close is None:
+        return None
+
+    # Calculate Result
+    # Calculate ATR
+    atr_value = atr(high, low, close, length=length)
+    if atr_value is None:
+        return None
+
+    # Calculate moving average of close
+    ma_value = ma(mamode, close, length=length)
+    if ma_value is None:
+        return None
+
+    # Calculate PMAX bands
+    pmax_up = ma_value - (multiplier * atr_value)
+    pmax_down = ma_value + (multiplier * atr_value)
+
+    pmax_arr = _pmax_trend_arrays(
+        close.to_numpy(),
+        pmax_up.to_numpy(copy=True),
+        pmax_down.to_numpy(copy=True),
+    )
+
+    # Convert back to Series
+    pmax_s = Series(pmax_arr, index=close.index)
+
+    # Offset
+    pmax_s = apply_offset(pmax_s, offset)
+
+    pmax_s = apply_fill(pmax_s, **kwargs)
+
+    # Name and Categorize it
+    pmax_s.name = f"PMAX_{mamode[0].upper()}_{length}_{multiplier}"
+    pmax_s.category = "trend"
+
+    return pmax_s
+
+
+pmax.__doc__ = """PMAX (Price Max)
+
+PMAX is a trend-following indicator that combines moving averages with ATR
+(Average True Range) to create adaptive support and resistance levels. It helps
+identify trend direction and potential reversal points.
+
+Sources:
+    https://www.tradingview.com/script/sU9molfV/
+    https://www.prorealcode.com/prorealtime-indicators/pmax/
+
+Calculation:
+    Default Inputs:
+        length=10, multiplier=3.0, mamode='ema'
+
+    ATR = ATR(high, low, close, length)
+    MA = MA(close, length, mamode)
+
+    PMAX_UP = MA - (multiplier * ATR)
+    PMAX_DOWN = MA + (multiplier * ATR)
+
+    If close > PMAX_DOWN[1]: trend = 1 (uptrend)
+    If close < PMAX_UP[1]: trend = -1 (downtrend)
+
+    PMAX = PMAX_UP if trend == 1 else PMAX_DOWN
+
+Args:
+    high (pd.Series): Series of 'high's
+    low (pd.Series): Series of 'low's
+    close (pd.Series): Series of 'close's
+    length (int): ATR period. Default: 10
+    multiplier (float): ATR multiplier. Default: 3.0
+    mamode (str): Moving average mode. Default: 'ema'
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series: New feature generated.
+"""

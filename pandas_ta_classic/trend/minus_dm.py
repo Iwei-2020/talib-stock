@@ -1,0 +1,86 @@
+# Minus Directional Movement (MINUS_DM)
+from typing import Any
+
+from pandas import Series
+
+from pandas_ta_classic import Imports
+from pandas_ta_classic.utils import (
+    apply_fill,
+    apply_offset,
+    get_drift,
+    get_offset,
+    verify_series,
+    zero,
+)
+from pandas_ta_classic.utils._core import _bool_param, _pos_int, nan_on_short_input
+
+
+@nan_on_short_input
+def minus_dm(
+    high: Series,
+    low: Series,
+    length: int | None = None,
+    talib: bool | None = None,
+    drift: int | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: Minus Directional Movement (-DM, MINUS_DM)
+
+    Raw Wilder-smoothed negative directional movement.
+    TA-Lib name: MINUS_DM.
+    """
+    length = _pos_int(length, 14, "length")
+    high = verify_series(high, length)
+    low = verify_series(low, length)
+    drift = get_drift(drift)
+    offset = get_offset(offset)
+    mode_talib = _bool_param(talib, False, "talib")
+
+    if high is None or low is None:
+        return None
+
+    # TA-Lib cannot express a non-default drift; run natively instead of ignoring it
+    if Imports["talib"] and mode_talib and drift == 1:
+        from talib import MINUS_DM as _MINUS_DM
+
+        result = _MINUS_DM(high, low, timeperiod=length)
+    else:
+        from pandas_ta_classic.utils._wilder import wilder_smooth
+
+        up = high - high.shift(drift)
+        dn = low.shift(drift) - low
+        neg_ = ((dn > up) & (dn > 0)) * dn
+        neg_ = neg_.apply(zero)
+        result = wilder_smooth(neg_, length)  # Wilder's raw DM, TA-Lib seeding
+
+    # Offset
+    result = apply_offset(result, offset)
+    result = apply_fill(result, **kwargs)
+
+    result.name = f"MINUS_DM_{length}"
+    result.category = "trend"
+    return result
+
+
+minus_dm.__doc__ = """Minus Directional Movement (-DM, MINUS_DM)
+
+Raw Wilder-smoothed negative directional movement before conversion to DI-.
+
+TA-Lib name: MINUS_DM.
+
+Args:
+    high (pd.Series): Series of 'high' prices
+    low (pd.Series): Series of 'low' prices
+    length (int): Lookback period. Default: 14
+    talib (bool): Use TA-Lib C library if installed. Default: False
+    drift (int): Difference period. Default: 1
+    offset (int): Periods to offset. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series
+"""

@@ -1,0 +1,84 @@
+# Short Run (SHORT_RUN)
+from typing import Any
+
+from pandas import Series
+
+from pandas_ta_classic.utils import apply_fill, apply_offset, get_offset, verify_series
+from pandas_ta_classic.utils._core import _pos_int, nan_on_short_input
+
+from .decreasing import decreasing
+from .increasing import increasing
+
+
+@nan_on_short_input
+def short_run(
+    fast: Series,
+    slow: Series,
+    length: int | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: Short Run"""
+    # Validate Arguments
+    length = _pos_int(length, 2, "length")
+    fast = verify_series(fast, length)
+    slow = verify_series(slow, length)
+    offset = get_offset(offset)
+
+    if fast is None or slow is None:
+        return None
+
+    # Calculate Result
+    pt = decreasing(fast, length) & increasing(slow, length)  # potential top or top
+    bd = decreasing(fast, length) & decreasing(slow, length)  # fast and slow are decreasing
+    short_run = pt | bd
+
+    # Offset
+    short_run = apply_offset(short_run, offset)
+
+    short_run = apply_fill(short_run, **kwargs)
+
+    # Name and Categorize it
+    short_run.name = f"SR_{length}"
+    short_run.category = "trend"
+
+    return short_run
+
+
+short_run.__doc__ = """Short Run
+
+Identifies potential short (bearish) trend conditions by detecting when the fast 
+moving average is decreasing while the slow moving average is either increasing 
+(potential top) or also decreasing (confirmed downtrend).
+
+Sources:
+    Used in AMAT (Archer Moving Averages Trends) indicator
+
+Calculation:
+    Default Inputs:
+        length=2
+    
+    PT = DECREASING(fast, length) AND INCREASING(slow, length)  # Potential top
+    BD = DECREASING(fast, length) AND DECREASING(slow, length)  # Both decreasing
+    SHORT_RUN = PT OR BD
+
+Args:
+    fast (pd.Series): Fast moving average Series (e.g. EMA(5)). Pre-computed,
+        not a period length.
+    slow (pd.Series): Slow moving average Series (e.g. EMA(20)). Pre-computed,
+        not a period length.
+    length (int): Lookback period. Default: 2
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Example:
+    fast_ma = df.ta.ema(length=5)
+    slow_ma = df.ta.ema(length=20)
+    sr = ta.short_run(fast_ma, slow_ma)
+
+Returns:
+    pd.Series: New feature generated (boolean).
+"""
