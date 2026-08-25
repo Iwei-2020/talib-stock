@@ -1,0 +1,141 @@
+# Cross Signals (XSIGNALS)
+from typing import Any
+
+import numpy as np
+from pandas import DataFrame, Series
+
+from pandas_ta_classic.utils import apply_fill, get_offset, verify_series
+from pandas_ta_classic.utils._core import _bool_param, nan_on_short_input
+from pandas_ta_classic.utils._signals import cross_value
+
+from .tsignals import _warn_trend_reset, tsignals
+
+
+@nan_on_short_input
+def xsignals(
+    signal: Series,
+    xa: float,
+    xb: float,
+    above: bool = True,
+    long: bool = True,
+    asbool: bool | None = None,
+    trend_reset: int | None = None,
+    trade_offset: int | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> DataFrame | None:
+    """Indicator: Cross Signals"""
+    # Validate Arguments
+    signal = verify_series(signal)
+    if signal is None:
+        return None
+    offset = get_offset(offset)
+    above = _bool_param(above, True, "above")
+    long = _bool_param(long, True, "long")
+    _warn_trend_reset("xsignals", trend_reset)
+
+    # Calculate Result
+    if above:
+        entries = cross_value(signal, xa)
+        exits = -cross_value(signal, xb, above=False)
+    else:
+        entries = cross_value(signal, xa, above=False)
+        exits = -cross_value(signal, xb)
+    trades = entries + exits
+
+    # Modify trades to fill gaps for trends
+    trades.replace({0: np.nan}, inplace=True)
+    trades.ffill(inplace=True)
+    trades.fillna(0, inplace=True)
+
+    trends = (trades > 0).astype(int)
+    if not long:
+        trends = 1 - trends
+
+    df = tsignals(
+        trends,
+        asbool=asbool,
+        trade_offset=trade_offset,
+        offset=offset,
+    )
+
+    # Offset handled by tsignals
+    df = apply_fill(df, **kwargs)
+
+    # Name & Category
+    df.name = "XS"
+    df.category = "trend"
+
+    return df
+
+
+xsignals.__doc__ = """Cross Signals (XSIGNALS)
+
+Cross Signals returns Trend Signal (TSIGNALS) results for Signal Crossings. This
+is useful for indicators like RSI, ZSCORE, et al where one wants trade Entries
+and Exits (and Trends).
+
+Cross Signals has two kinds of modes: above and long.
+
+The first mode 'above', default True, xsignals determines if the signal first
+crosses above 'xa' and then below 'xb'. If 'above' is False, xsignals determines
+if the signal first crosses below 'xa' and then above 'xb'.
+
+The second mode 'long', default True, passes the long trend result into
+tsignals so it can determine the appropriate Entries and Exits. When 'long' is
+False, it does the same but for the short side.
+
+Example:
+# These are two different outcomes and depends on the indicator and it's
+# characteristics. Please check BOTH outcomes BEFORE making an Issue.
+rsi = df.ta.rsi()
+# Returns tsignal DataFrame when RSI crosses above 20 and then below 80
+ta.xsignals(rsi, 20, 80, above=True)
+# Returns tsignal DataFrame when RSI crosses below 20 and then above 80
+ta.xsignals(rsi, 20, 80, above=False)
+
+Source: Kevin Johnson
+
+Calculation:
+    Default Inputs:
+        asbool=False, trade_offset=0, drift=1
+        (xa, xb: no defaults — required)
+
+    trades = trends.diff().shift(trade_offset).fillna(0).astype(int)
+    entries = (trades > 0).astype(int)
+    exits = (trades < 0).abs().astype(int)
+
+Args:
+    signal (pd.Series): Oscillator or signal Series to evaluate.
+    xa (float): Entry threshold. Choose based on indicator range.
+        RSI/Stoch/KDJ (0–100): typical 20–30 (oversold) or 70–80 (overbought).
+        Unbounded indicators (MACD, CCI): must match their actual value range.
+        WARNING: xa=80 with MACD (range ~-5 to +5) will never trigger.
+    xb (float): Exit threshold, opposite side of xa (e.g. if xa=20 use xb=80).
+    above (bool): When the signal crosses above 'xa' first and then 'xb'. When
+        False, then when the signal crosses below 'xa' first and then 'xb'.
+        Default: True
+    long (bool): Passes the long trend into tsignals' trend argument. When
+        False, it passes the short trend into tsignals trend argument.
+        Default: True
+    drift (int): The difference period. Default: 1
+    offset (int): How many periods to offset the result. Default: 0
+
+    # TSIGNAL Passthrough arguments
+    asbool (bool): If True, it converts the Trends, Entries and Exits columns to
+        booleans. When boolean, it is also useful for backtesting with
+        vectorbt's Portfolio.from_signal(close, entries, exits) Default: False
+    trend_reset (value): Deprecated since 0.9.0 and unused: it never affected the
+        result. Passing it emits a DeprecationWarning. Default: None
+    trade_offset (value): Value used shift the trade entries/exits Use 1 for
+        backtesting and 0 for live. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.DataFrame with columns:
+    Trends (trend: 1, no trend: 0), Trades (Enter: 1, Exit: -1, Otherwise: 0),
+    Entries (entry: 1, nothing: 0), Exits (exit: 1, nothing: 0)
+"""
