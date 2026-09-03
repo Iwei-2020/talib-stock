@@ -1,0 +1,157 @@
+# Bollinger Bands (BBANDS)
+from typing import Any
+
+from pandas import DataFrame, Series
+
+from pandas_ta_classic import Imports
+from pandas_ta_classic.overlap.ma import ma
+from pandas_ta_classic.statistics.stdev import stdev
+from pandas_ta_classic.utils import (
+    apply_fill,
+    apply_offset,
+    get_offset,
+    non_zero_range,
+    tal_ma,
+    verify_series,
+)
+from pandas_ta_classic.utils._core import _bool_param, _pos_float, _pos_int, _str_param, nan_on_short_input
+
+
+def _bbands_native(close, length, std, ddof, mamode, kwargs):
+    """Compute Bollinger Bands without TA-Lib.
+
+    Args:
+        close (Series): Close price series.
+        length (int): Look-back period.
+        std (float): Standard deviation multiplier.
+        ddof (int): Delta degrees-of-freedom for stdev.
+        mamode (str): MA type for the middle band.
+        kwargs (dict): Extra kwargs forwarded to the MA call.
+
+    Returns:
+        tuple[Series, Series, Series] | None: ``(lower, mid, upper)`` or
+        *None* when any intermediate result is unavailable.
+    """
+    standard_deviation = stdev(close=close, length=length, ddof=ddof)
+    if standard_deviation is None:
+        return None
+    deviations = std * standard_deviation
+    mid = ma(mamode, close, length=length, **kwargs)
+    if mid is None:
+        return None
+    lower = mid - deviations
+    upper = mid + deviations
+    return lower, mid, upper
+
+
+@nan_on_short_input
+def bbands(
+    close: Series,
+    length: int | None = None,
+    std: float | None = None,
+    ddof: int = 0,
+    mamode: str | None = None,
+    talib: bool | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> DataFrame | None:
+    """Indicator: Bollinger Bands (BBANDS)"""
+    # Validate arguments
+    length = _pos_int(length, 5, "length", gt=1)
+    std = _pos_float(std, 2.0, "std")
+    mamode = _str_param(mamode, "sma", "mamode")
+    ddof = _pos_int(ddof, 0, "ddof", gt=None, ge=0, lt=length)
+    close = verify_series(close, length)
+    offset = get_offset(offset)
+    mode_talib = _bool_param(talib, False, "talib")
+
+    if close is None:
+        return None
+
+    # Calculate Result
+    # TA-Lib cannot express a non-default ddof; run natively instead of ignoring it
+    if Imports["talib"] and mode_talib and ddof == 0:
+        from talib import BBANDS
+
+        upper, mid, lower = BBANDS(close, length, std, std, tal_ma(mamode))
+    else:
+        result = _bbands_native(close, length, std, ddof, mamode, kwargs)
+        if result is None:
+            return None
+        lower, mid, upper = result
+
+    ulr = non_zero_range(upper, lower)
+    bandwidth = 100 * ulr / mid
+    percent = non_zero_range(close, lower) / ulr
+
+    # Offset
+    lower, mid, upper, bandwidth, percent = apply_offset([lower, mid, upper, bandwidth, percent], offset)
+
+    lower, mid, upper, bandwidth, percent = apply_fill([lower, mid, upper, bandwidth, percent], **kwargs)
+
+    # Name and Categorize it
+    lower.name = f"BBL_{length}_{std}"
+    mid.name = f"BBM_{length}_{std}"
+    upper.name = f"BBU_{length}_{std}"
+    bandwidth.name = f"BBB_{length}_{std}"
+    percent.name = f"BBP_{length}_{std}"
+    upper.category = lower.category = "volatility"
+    mid.category = bandwidth.category = upper.category
+
+    # Prepare DataFrame to return
+    data = {
+        lower.name: lower,
+        mid.name: mid,
+        upper.name: upper,
+        bandwidth.name: bandwidth,
+        percent.name: percent,
+    }
+    bbandsdf = DataFrame(data)
+    bbandsdf.name = f"BBANDS_{length}_{std}"
+    bbandsdf.category = mid.category
+
+    return bbandsdf
+
+
+bbands.__doc__ = """Bollinger Bands (BBANDS)
+
+A popular volatility indicator by John Bollinger.
+
+Sources:
+    https://www.tradingview.com/wiki/Bollinger_Bands_(BB)
+
+Calculation:
+    Default Inputs:
+        length=5, std=2, mamode="sma", ddof=0
+    EMA = Exponential Moving Average
+    SMA = Simple Moving Average
+    STDEV = Standard Deviation
+    stdev = STDEV(close, length, ddof)
+    if "ema":
+        MID = EMA(close, length)
+    else:
+        MID = SMA(close, length)
+
+    LOWER = MID - std * stdev
+    UPPER = MID + std * stdev
+
+    BANDWIDTH = 100 * (UPPER - LOWER) / MID
+    PERCENT = (close - LOWER) / (UPPER - LOWER)
+
+Args:
+    close (pd.Series): Series of 'close's
+    length (int): The short period. Default: 5
+    std (int): The long period. Default: 2
+    ddof (int): Degrees of Freedom to use. Default: 0
+    mamode (str): See ```help(ta.ma)```. Default: 'sma'
+    talib (bool): If TA Lib is installed and talib is True, Returns the TA Lib
+        version. Default: False
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.DataFrame: lower, mid, upper, bandwidth, and percent columns.
+"""

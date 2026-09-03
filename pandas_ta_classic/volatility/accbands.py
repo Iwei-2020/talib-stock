@@ -1,0 +1,119 @@
+# Acceleration Bands (ACCBANDS)
+from typing import Any
+
+from pandas import DataFrame, Series
+
+from pandas_ta_classic.overlap.ma import ma
+from pandas_ta_classic.utils import (
+    apply_fill,
+    apply_offset,
+    get_offset,
+    non_zero_range,
+    verify_series,
+)
+from pandas_ta_classic.utils._core import _pos_float, _pos_int, _str_param, nan_on_short_input
+
+
+@nan_on_short_input
+def accbands(
+    high: Series,
+    low: Series,
+    close: Series,
+    length: int | None = None,
+    c: float | None = None,
+    mamode: str | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> DataFrame | None:
+    """Indicator: Acceleration Bands (ACCBANDS)"""
+    # Validate arguments
+    length = _pos_int(length, 20, "length")
+    c = _pos_float(c, 4, "c")
+    mamode = _str_param(mamode, "sma", "mamode")
+    high = verify_series(high, length)
+    low = verify_series(low, length)
+    close = verify_series(close, length)
+    offset = get_offset(offset)
+
+    if high is None or low is None or close is None:
+        return None
+
+    # Calculate Result
+    high_low_range = non_zero_range(high, low)
+    hl_ratio = high_low_range / (high + low)
+    hl_ratio *= c
+    _lower = low * (1 - hl_ratio)
+    _upper = high * (1 + hl_ratio)
+
+    lower = ma(mamode, _lower, length=length)
+    if lower is None:
+        return None
+    mid = ma(mamode, close, length=length)
+    if mid is None:
+        return None
+    upper = ma(mamode, _upper, length=length)
+    if upper is None:
+        return None
+
+    # Offset
+    lower, mid, upper = apply_offset([lower, mid, upper], offset)
+
+    lower, mid, upper = apply_fill([lower, mid, upper], **kwargs)
+
+    # Name and Categorize it
+    lower.name = f"ACCBL_{length}"
+    mid.name = f"ACCBM_{length}"
+    upper.name = f"ACCBU_{length}"
+    mid.category = upper.category = lower.category = "volatility"
+
+    # Prepare DataFrame to return
+    data = {lower.name: lower, mid.name: mid, upper.name: upper}
+    accbandsdf = DataFrame(data)
+    accbandsdf.name = f"ACCBANDS_{length}"
+    accbandsdf.category = mid.category
+
+    return accbandsdf
+
+
+accbands.__doc__ = """Acceleration Bands (ACCBANDS)
+
+Acceleration Bands created by Price Headley plots upper and lower envelope
+bands around a simple moving average.
+
+Sources:
+    https://www.tradingtechnologies.com/help/x-study/technical-indicator-definitions/acceleration-bands-abands/
+
+Calculation:
+    Default Inputs:
+        length=10, c=4
+    EMA = Exponential Moving Average
+    SMA = Simple Moving Average
+    HL_RATIO = c * (high - low) / (high + low)
+    LOW = low * (1 - HL_RATIO)
+    HIGH = high * (1 + HL_RATIO)
+
+    if 'ema':
+        LOWER = EMA(LOW, length)
+        MID = EMA(close, length)
+        UPPER = EMA(HIGH, length)
+    else:
+        LOWER = SMA(LOW, length)
+        MID = SMA(close, length)
+        UPPER = SMA(HIGH, length)
+
+Args:
+    high (pd.Series): Series of 'high's
+    low (pd.Series): Series of 'low's
+    close (pd.Series): Series of 'close's
+    length (int): It's period. Default: 20
+    c (int): Multiplier. Default: 4
+    mamode (str): See ```help(ta.ma)```. Default: 'sma'
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.DataFrame: lower, mid, upper columns.
+"""
