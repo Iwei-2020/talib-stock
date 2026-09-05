@@ -1,0 +1,97 @@
+# Mass Index (MASSI)
+from typing import Any
+
+from pandas import Series
+
+from pandas_ta_classic.overlap.ema import ema
+from pandas_ta_classic.utils import (
+    apply_fill,
+    apply_offset,
+    get_offset,
+    non_zero_range,
+    verify_series,
+)
+from pandas_ta_classic.utils._core import _pos_int, nan_on_short_input
+
+
+@nan_on_short_input
+def massi(
+    high: Series,
+    low: Series,
+    fast: int | None = None,
+    slow: int | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: Mass Index (MASSI)"""
+    # Validate arguments
+    fast = _pos_int(fast, 9, "fast")
+    slow = _pos_int(slow, 25, "slow")
+    if slow < fast:
+        fast, slow = slow, fast
+    _length = max(fast, slow)
+    high = verify_series(high, _length)
+    low = verify_series(low, _length)
+    offset = get_offset(offset)
+    # A strategy-wide length (df.ta.strategy(..., length=N)) has no meaning here and the
+    # inner calls set length themselves; drop it so it cannot collide with their keyword.
+    kwargs.pop("length", None)
+
+    if high is None or low is None:
+        return None
+
+    # Calculate Result
+    high_low_range = non_zero_range(high, low)
+    hl_ema1 = ema(close=high_low_range, length=fast, **kwargs)
+    hl_ema2 = ema(close=hl_ema1, length=fast, **kwargs)
+    if hl_ema1 is None or hl_ema2 is None:
+        return None
+
+    hl_ratio = hl_ema1 / hl_ema2
+    massi = hl_ratio.rolling(slow, min_periods=slow).sum()
+
+    # Offset
+    massi = apply_offset(massi, offset)
+
+    massi = apply_fill(massi, **kwargs)
+
+    # Name and Categorize it
+    massi.name = f"MASSI_{fast}_{slow}"
+    massi.category = "volatility"
+
+    return massi
+
+
+massi.__doc__ = """Mass Index (MASSI)
+
+The Mass Index is a non-directional volatility indicator that utilitizes the
+High-Low Range to identify trend reversals based on range expansions.
+
+Sources:
+    https://stockcharts.com/school/doku.php?id=chart_school:technical_indicators:mass_index
+    mi = sum(ema(high - low, 9) / ema(ema(high - low, 9), 9), length)
+
+Calculation:
+    Default Inputs:
+        fast: 9, slow: 25
+    EMA = Exponential Moving Average
+    hl = high - low
+    hl_ema1 = EMA(hl, fast)
+    hl_ema2 = EMA(hl_ema1, fast)
+    hl_ratio = hl_ema1 / hl_ema2
+    MASSI = SUM(hl_ratio, slow)
+
+Args:
+    high (pd.Series): Series of 'high's
+    low (pd.Series): Series of 'low's
+    fast (int): The short period. Default: 9
+    slow (int): The long period. Default: 25
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series: New feature generated.
+"""

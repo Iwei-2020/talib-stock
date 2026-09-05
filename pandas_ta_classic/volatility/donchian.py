@@ -1,0 +1,86 @@
+# Donchian Channels (DONCHIAN)
+from typing import Any
+
+from pandas import DataFrame, Series
+
+from pandas_ta_classic.utils import apply_fill, apply_offset, get_offset, verify_series
+from pandas_ta_classic.utils._core import _pos_int, nan_on_short_input
+
+
+@nan_on_short_input
+def donchian(
+    high: Series,
+    low: Series,
+    lower_length: int | None = None,
+    upper_length: int | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> DataFrame | None:
+    """Indicator: Donchian Channels (DC)"""
+    # Validate arguments
+    lower_length = _pos_int(lower_length, 20, "lower_length")
+    upper_length = _pos_int(upper_length, 20, "upper_length")
+    lower_min_periods = _pos_int(kwargs.get("lower_min_periods"), lower_length, "lower_min_periods", gt=None, ge=0)
+    upper_min_periods = _pos_int(kwargs.get("upper_min_periods"), upper_length, "upper_min_periods", gt=None, ge=0)
+    _length = max(lower_length, lower_min_periods, upper_length, upper_min_periods)
+    high = verify_series(high, _length)
+    low = verify_series(low, _length)
+    offset = get_offset(offset)
+
+    if high is None or low is None:
+        return None
+
+    # Calculate Result
+    lower = low.rolling(lower_length, min_periods=lower_min_periods).min()
+    upper = high.rolling(upper_length, min_periods=upper_min_periods).max()
+    mid = 0.5 * (lower + upper)
+
+    lower, mid, upper = apply_fill([lower, mid, upper], **kwargs)
+
+    # Offset
+    lower, mid, upper = apply_offset([lower, mid, upper], offset)
+
+    # Name and Categorize it
+    lower.name = f"DCL_{lower_length}_{upper_length}"
+    mid.name = f"DCM_{lower_length}_{upper_length}"
+    upper.name = f"DCU_{lower_length}_{upper_length}"
+    mid.category = upper.category = lower.category = "volatility"
+
+    # Prepare DataFrame to return
+    data = {lower.name: lower, mid.name: mid, upper.name: upper}
+    dcdf = DataFrame(data)
+    dcdf.name = f"DC_{lower_length}_{upper_length}"
+    dcdf.category = mid.category
+
+    return dcdf
+
+
+donchian.__doc__ = """Donchian Channels (DC)
+
+Donchian Channels are used to measure volatility, similar to
+Bollinger Bands and Keltner Channels.
+
+Sources:
+    https://www.tradingview.com/wiki/Donchian_Channels_(DC)
+
+Calculation:
+    Default Inputs:
+        lower_length=upper_length=20
+    LOWER = low.rolling(lower_length).min()
+    UPPER = high.rolling(upper_length).max()
+    MID = 0.5 * (LOWER + UPPER)
+
+Args:
+    high (pd.Series): Series of 'high's
+    low (pd.Series): Series of 'low's
+    lower_length (int): The short period. Default: 20
+    upper_length (int): The short period. Default: 20
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.DataFrame: lower, mid, upper columns.
+"""
