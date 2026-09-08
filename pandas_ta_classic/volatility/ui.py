@@ -1,0 +1,93 @@
+# Ulcer Index (UI)
+from typing import Any
+
+import numpy as np
+from pandas import Series
+
+from pandas_ta_classic.overlap.sma import sma
+from pandas_ta_classic.utils import apply_fill, apply_offset, get_offset, verify_series
+from pandas_ta_classic.utils._core import _bool_param, _pos_float, _pos_int, nan_on_short_input
+
+
+@nan_on_short_input
+def ui(
+    close: Series,
+    length: int | None = None,
+    scalar: float | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: Ulcer Index (UI)"""
+    # Validate arguments
+    length = _pos_int(length, 14, "length")
+    scalar = _pos_float(scalar, 100, "scalar")
+    close = verify_series(close, length)
+    offset = get_offset(offset)
+
+    if close is None:
+        return None
+
+    # Calculate Result
+    highest_close = close.rolling(length).max()
+    downside = scalar * (close - highest_close)
+    downside /= highest_close
+    d2 = downside * downside
+
+    everget = _bool_param(kwargs.pop("everget", None), False, "everget")
+    if everget:
+        # Everget uses SMA instead of SUM for calculation
+        ui = (sma(d2, length) / length).apply(np.sqrt)
+    else:
+        ui = (d2.rolling(length).sum() / length).apply(np.sqrt)
+
+    # Offset
+    ui = apply_offset(ui, offset)
+
+    ui = apply_fill(ui, **kwargs)
+
+    # Name and Categorize it
+    ui.name = f"UI{'' if not everget else 'e'}_{length}"
+    ui.category = "volatility"
+
+    return ui
+
+
+ui.__doc__ = """Ulcer Index (UI)
+
+The Ulcer Index by Peter Martin measures the downside volatility with the use of
+the Quadratic Mean, which has the effect of emphasising large drawdowns.
+
+Sources:
+    https://library.tradingtechnologies.com/trade/chrt-ti-ulcer-index.html
+    https://en.wikipedia.org/wiki/Ulcer_index
+    http://www.tangotools.com/ui/ui.htm
+
+Calculation:
+    Default Inputs:
+        length=14, scalar=100
+    HC = Highest Close
+    SMA = Simple Moving Average
+
+    HCN = HC(close, length)
+    DOWNSIDE = scalar * (close - HCN) / HCN
+    if kwargs["everget"]:
+        UI = SQRT(SMA(DOWNSIDE^2, length) / length)
+    else:
+        UI = SQRT(SUM(DOWNSIDE^2, length) / length)
+
+Args:
+    high (pd.Series): Series of 'high's
+    close (pd.Series): Series of 'close's
+    length (int): The short period.  Default: 14
+    scalar (float): A positive float to scale the bands. Default: 100
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+    everget (value, optional): TradingView's Evergets SMA instead of SUM
+        calculation. Default: False
+
+Returns:
+    pd.Series: New feature
+"""
