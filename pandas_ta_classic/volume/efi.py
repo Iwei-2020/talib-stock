@@ -1,0 +1,92 @@
+# Elder Force Index (EFI)
+from typing import Any
+
+from pandas import Series
+
+from pandas_ta_classic.overlap.ma import ma
+from pandas_ta_classic.utils import (
+    apply_fill,
+    apply_offset,
+    get_drift,
+    get_offset,
+    verify_series,
+)
+from pandas_ta_classic.utils._core import _pos_int, _str_param, nan_on_short_input
+
+
+@nan_on_short_input
+def efi(
+    close: Series,
+    volume: Series,
+    length: int | None = None,
+    mamode: str | None = None,
+    drift: int | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: Elder's Force Index (EFI)"""
+    # Validate arguments
+    length = _pos_int(length, 13, "length")
+    mamode = _str_param(mamode, "ema", "mamode")
+    close = verify_series(close, length)
+    volume = verify_series(volume, length)
+    drift = get_drift(drift)
+    offset = get_offset(offset)
+
+    if close is None or volume is None:
+        return None
+
+    # Calculate Result
+    pv_diff = close.diff(drift) * volume
+    efi = ma(mamode, pv_diff, length=length)
+    if efi is None:
+        return None
+
+    # Offset
+    efi = apply_offset(efi, offset)
+
+    efi = apply_fill(efi, **kwargs)
+
+    # Name and Categorize it
+    efi.name = f"EFI_{length}"
+    efi.category = "volume"
+
+    return efi
+
+
+efi.__doc__ = """Elder's Force Index (EFI)
+
+Elder's Force Index measures the power behind a price movement using price
+and volume as well as potential reversals and price corrections.
+
+Sources:
+    https://www.tradingview.com/wiki/Elder%27s_Force_Index_(EFI)
+    https://www.motivewave.com/studies/elders_force_index.htm
+
+Calculation:
+    Default Inputs:
+        length=20, drift=1, mamode=None
+    EMA = Exponential Moving Average
+    SMA = Simple Moving Average
+
+    pv_diff = close.diff(drift) * volume
+    if mamode == 'sma':
+        EFI = SMA(pv_diff, length)
+    else:
+        EFI = EMA(pv_diff, length)
+
+Args:
+    close (pd.Series): Series of 'close's
+    volume (pd.Series): Series of 'volume's
+    length (int): The short period. Default: 13
+    drift (int): The diff period. Default: 1
+    mamode (str): See ```help(ta.ma)```. Default: 'ema'
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series: New feature generated.
+"""
