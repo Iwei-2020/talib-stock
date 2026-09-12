@@ -1,0 +1,71 @@
+# Price Volume (PVOL)
+from typing import Any
+
+from pandas import Series
+
+from pandas_ta_classic.utils import (
+    apply_fill,
+    apply_offset,
+    get_offset,
+    signed_series,
+    verify_series,
+)
+from pandas_ta_classic.utils._core import _bool_param, nan_on_short_input
+
+
+@nan_on_short_input
+def pvol(
+    close: Series,
+    volume: Series,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: Price-Volume (PVOL)"""
+    # Validate arguments
+    close = verify_series(close)
+    volume = verify_series(volume)
+    if close is None or volume is None:
+        return None
+    offset = get_offset(offset)
+    signed = _bool_param(kwargs.pop("signed", None), False, "signed")
+
+    # Calculate Result
+    pvol = close * volume
+    if signed:
+        pvol *= signed_series(close, 1)
+
+    # Offset
+    pvol = apply_offset(pvol, offset)
+
+    pvol = apply_fill(pvol, **kwargs)
+
+    # Name and Categorize it
+    pvol.name = "PVOL"
+    pvol.category = "volume"
+
+    return pvol
+
+
+pvol.__doc__ = """Price-Volume (PVOL)
+
+Returns a series of the product of price and volume.
+
+Calculation:
+    if signed:
+        pvol = signed_series(close, 1) * close * volume
+    else:
+        pvol = close * volume
+
+Args:
+    close (pd.Series): Series of 'close's
+    volume (pd.Series): Series of 'volume's
+    signed (bool): Keeps the sign of the difference in 'close's. Default: False
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series: New feature generated.
+"""

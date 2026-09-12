@@ -1,0 +1,123 @@
+# Money Flow Index (MFI)
+from typing import Any
+
+import numpy as np
+from pandas import DataFrame, Series
+
+from pandas_ta_classic import Imports
+from pandas_ta_classic.overlap.hlc3 import hlc3
+from pandas_ta_classic.utils import (
+    apply_fill,
+    apply_offset,
+    get_drift,
+    get_offset,
+    verify_series,
+)
+from pandas_ta_classic.utils._core import _bool_param, _pos_int, nan_on_short_input, skip_leading_nan
+
+
+@nan_on_short_input
+@skip_leading_nan("high", "low", "close", "volume")
+def mfi(
+    high: Series,
+    low: Series,
+    close: Series,
+    volume: Series,
+    length: int | None = None,
+    talib: bool | None = None,
+    drift: int | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: Money Flow Index (MFI)"""
+    # Validate arguments
+    length = _pos_int(length, 14, "length")
+    high = verify_series(high, length)
+    low = verify_series(low, length)
+    close = verify_series(close, length)
+    volume = verify_series(volume, length)
+    drift = get_drift(drift)
+    offset = get_offset(offset)
+    mode_talib = _bool_param(talib, False, "talib")
+
+    if high is None or low is None or close is None or volume is None:
+        return None
+
+    # Calculate Result
+    # TA-Lib cannot express a non-default drift; run natively instead of ignoring it
+    if Imports["talib"] and mode_talib and drift == 1:
+        from talib import MFI
+
+        mfi = MFI(high, low, close, volume, length)
+    else:
+        typical_price = hlc3(high=high, low=low, close=close)
+        raw_money_flow = typical_price * volume
+
+        tdf = DataFrame({"diff": 0, "rmf": raw_money_flow, "+mf": 0.0, "-mf": 0.0})
+
+        tdf.loc[(typical_price.diff(drift) > 0), "diff"] = 1
+        tdf.loc[tdf["diff"] == 1, "+mf"] = raw_money_flow
+
+        tdf.loc[(typical_price.diff(drift) < 0), "diff"] = -1
+        tdf.loc[tdf["diff"] == -1, "-mf"] = raw_money_flow
+        # The first `drift` bars have no previous price, so their flow is undefined,
+        # not zero; a window that includes them is incomplete (TA-Lib and tulipy
+        # start at bar `length`).
+        tdf.iloc[:drift, tdf.columns.get_indexer(["+mf", "-mf"])] = np.nan
+
+        psum = tdf["+mf"].rolling(length).sum()
+        nsum = tdf["-mf"].rolling(length).sum()
+        tdf["mr"] = psum / nsum
+        mfi = 100 * psum / (psum + nsum)
+        tdf["mfi"] = mfi
+
+    # Offset
+    mfi = apply_offset(mfi, offset)
+
+    mfi = apply_fill(mfi, **kwargs)
+
+    # Name and Categorize it
+    mfi.name = f"MFI_{length}"
+    mfi.category = "volume"
+
+    return mfi
+
+
+mfi.__doc__ = """Money Flow Index (MFI)
+
+Money Flow Index is an oscillator indicator that is used to measure buying and
+selling pressure by utilizing both price and volume.
+
+Sources:
+    https://www.tradingview.com/wiki/Money_Flow_(MFI)
+
+Calculation:
+    Default Inputs:
+        length=14, drift=1
+    tp = typical_price = hlc3 = (high + low + close) / 3
+    rmf = raw_money_flow = tp * volume
+
+    pmf = pos_money_flow = SUM(rmf, length) if tp.diff(drift) > 0 else 0
+    nmf = neg_money_flow = SUM(rmf, length) if tp.diff(drift) < 0 else 0
+
+    MFR = money_flow_ratio = pmf / nmf
+    MFI = money_flow_index = 100 * pmf / (pmf + nmf)
+
+Args:
+    high (pd.Series): Series of 'high's
+    low (pd.Series): Series of 'low's
+    close (pd.Series): Series of 'close's
+    volume (pd.Series): Series of 'volume's
+    length (int): The sum period. Default: 14
+    talib (bool): If TA Lib is installed and talib is True, Returns the TA Lib
+        version. Default: False
+    drift (int): The difference period. Default: 1
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series: New feature generated.
+"""

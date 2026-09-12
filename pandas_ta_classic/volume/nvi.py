@@ -1,0 +1,91 @@
+# Negative Volume Index (NVI)
+from typing import Any
+
+from pandas import Series
+
+from pandas_ta_classic.momentum.roc import roc
+from pandas_ta_classic.utils import (
+    apply_fill,
+    apply_offset,
+    get_offset,
+    signed_series,
+    verify_series,
+)
+from pandas_ta_classic.utils._core import _pos_int, nan_on_short_input
+
+
+@nan_on_short_input
+def nvi(
+    close: Series,
+    volume: Series,
+    length: int | None = None,
+    initial: int | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: Negative Volume Index (NVI)"""
+    # Validate arguments
+    length = _pos_int(length, 1, "length")
+    initial = _pos_int(initial, 1000, "initial")
+    close = verify_series(close, length)
+    volume = verify_series(volume, length)
+    offset = get_offset(offset)
+
+    if close is None or volume is None:
+        return None
+
+    # Calculate Result
+    roc_ = roc(close=close, length=length)
+    signed_volume = signed_series(volume, 1)
+    nvi = signed_volume[signed_volume < 0].abs() * roc_
+    nvi.fillna(0, inplace=True)
+    nvi.iloc[0] = initial
+    nvi = nvi.cumsum()
+
+    # Offset
+    nvi = apply_offset(nvi, offset)
+
+    nvi = apply_fill(nvi, **kwargs)
+
+    # Name and Categorize it
+    nvi.name = f"NVI_{length}"
+    nvi.category = "volume"
+
+    return nvi
+
+
+nvi.__doc__ = """Negative Volume Index (NVI)
+
+The Negative Volume Index is a cumulative indicator that uses volume change in
+an attempt to identify where smart money is active.
+
+Sources:
+    https://stockcharts.com/school/doku.php?id=chart_school:technical_indicators:negative_volume_inde
+    https://www.motivewave.com/studies/negative_volume_index.htm
+
+Calculation:
+    Default Inputs:
+        length=1, initial=1000
+    ROC = Rate of Change
+
+    roc = ROC(close, length)
+    signed_volume = signed_series(volume, initial=1)
+    nvi = signed_volume[signed_volume < 0].abs() * roc_
+    nvi.fillna(0, inplace=True)
+    nvi.iloc[0]= initial
+    nvi = nvi.cumsum()
+
+Args:
+    close (pd.Series): Series of 'close's
+    volume (pd.Series): Series of 'volume's
+    length (int): The short period. Default: 1
+    initial (int): The short period. Default: 1000
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series: New feature generated.
+"""

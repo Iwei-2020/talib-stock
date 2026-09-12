@@ -1,0 +1,83 @@
+# On Balance Volume (OBV)
+from typing import Any
+
+from pandas import Series
+
+from pandas_ta_classic import Imports
+from pandas_ta_classic.utils import (
+    apply_fill,
+    apply_offset,
+    get_offset,
+    signed_series,
+    verify_series,
+)
+from pandas_ta_classic.utils._core import _bool_param, nan_on_short_input, skip_leading_nan
+
+
+@nan_on_short_input
+@skip_leading_nan("close", "volume")
+def obv(
+    close: Series,
+    volume: Series,
+    talib: bool | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: On Balance Volume (OBV)"""
+    # Validate arguments
+    close = verify_series(close)
+    volume = verify_series(volume)
+    if close is None or volume is None:
+        return None
+    offset = get_offset(offset)
+    mode_talib = _bool_param(talib, False, "talib")
+
+    # Calculate Result
+    if Imports["talib"] and mode_talib:
+        from talib import OBV
+
+        obv = OBV(close, volume)
+    else:
+        signed_volume = signed_series(close, initial=1) * volume
+        obv = signed_volume.cumsum()
+
+    # Offset
+    obv = apply_offset(obv, offset)
+
+    obv = apply_fill(obv, **kwargs)
+
+    # Name and Categorize it
+    obv.name = "OBV"
+    obv.category = "volume"
+
+    return obv
+
+
+obv.__doc__ = """On Balance Volume (OBV)
+
+On Balance Volume is a cumulative indicator to measure buying and selling
+pressure.
+
+Sources:
+    https://www.tradingview.com/wiki/On_Balance_Volume_(OBV)
+    https://www.tradingtechnologies.com/help/x-study/technical-indicator-definitions/on-balance-volume-obv/
+    https://www.motivewave.com/studies/on_balance_volume.htm
+
+Calculation:
+    signed_volume = signed_series(close, initial=1) * volume
+    obv = signed_volume.cumsum()
+
+Args:
+    close (pd.Series): Series of 'close's
+    volume (pd.Series): Series of 'volume's
+    talib (bool): If TA Lib is installed and talib is True, Returns the TA Lib
+        version. Default: False
+    offset (int): How many periods to offset the result. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series: New feature generated.
+"""
