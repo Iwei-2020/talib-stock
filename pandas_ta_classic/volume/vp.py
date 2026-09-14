@@ -1,0 +1,158 @@
+# Volume Profile (VP)
+import warnings
+from typing import Any
+
+import numpy as np
+from pandas import DataFrame, Series, concat, cut
+
+from pandas_ta_classic.utils import apply_fill, signed_series, verify_series
+from pandas_ta_classic.utils._core import _bool_param, _pos_int, nan_on_short_input
+
+
+@nan_on_short_input
+def vp(
+    close: Series,
+    volume: Series,
+    width: int | None = None,
+    **kwargs: Any,
+) -> DataFrame | None:
+    """Indicator: Volume Profile (VP)"""
+    # Validate arguments
+    # `lookahead=False` asks for output a bar could have produced in real time.
+    # There is no such mode here -- the whole series is aggregated into bins --
+    # so decline instead of handing back forward-looking values under a keyword
+    # that promises the opposite.
+    if not _bool_param(kwargs.get("lookahead"), True, "lookahead"):
+        warnings.warn(
+            "vp() has no causal mode: the whole series is aggregated into price bins, so the result is a profile rather than a time series. "
+            "Returning None because lookahead=False was requested.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return None
+
+    width = _pos_int(width, 10, "width")
+    close = verify_series(close, width)
+    volume = verify_series(volume, width)
+    sort_close = _bool_param(kwargs.pop("sort_close", None), False, "sort_close")
+
+    if close is None or volume is None:
+        return None
+
+    # Setup
+    signed_price = signed_series(close, 1)
+    pos_volume = volume * signed_price[signed_price > 0]
+    pos_volume.name = volume.name
+    neg_volume = -volume * signed_price[signed_price < 0]
+    neg_volume.name = volume.name
+    vp = concat([close, pos_volume, neg_volume], axis=1)
+
+    close_col = f"{vp.columns[0]}"
+    high_price_col = f"high_{close_col}"
+    low_price_col = f"low_{close_col}"
+    mean_price_col = f"mean_{close_col}"
+
+    volume_col = f"{vp.columns[1]}"
+    pos_volume_col = f"pos_{volume_col}"
+    neg_volume_col = f"neg_{volume_col}"
+    total_volume_col = f"total_{volume_col}"
+    vp.columns = [close_col, pos_volume_col, neg_volume_col]
+
+    # sort_close: Sort by close before splitting into ranges. Default: False
+    # If False, it sorts by date index or chronological versus by price
+
+    if sort_close:
+        vp[mean_price_col] = vp[close_col]
+        vpdf = vp.groupby(
+            cut(vp[close_col], width, include_lowest=True, precision=2),
+            observed=True,
+        ).agg(
+            {
+                mean_price_col: "mean",
+                pos_volume_col: "sum",
+                neg_volume_col: "sum",
+            }
+        )
+        vpdf[low_price_col] = [x.left for x in vpdf.index]
+        vpdf[high_price_col] = [x.right for x in vpdf.index]
+        vpdf = vpdf.reset_index(drop=True)
+        vpdf = vpdf[
+            [
+                low_price_col,
+                mean_price_col,
+                high_price_col,
+                pos_volume_col,
+                neg_volume_col,
+            ]
+        ]
+    else:
+        vp_ranges = [vp.iloc[idx] for idx in np.array_split(np.arange(len(vp)), width)]
+        result = (
+            {
+                low_price_col: r[close_col].min(),
+                mean_price_col: r[close_col].mean(),
+                high_price_col: r[close_col].max(),
+                pos_volume_col: r[pos_volume_col].sum(),
+                neg_volume_col: r[neg_volume_col].sum(),
+            }
+            for r in vp_ranges
+        )
+        vpdf = DataFrame(result)
+    vpdf[total_volume_col] = vpdf[pos_volume_col] + vpdf[neg_volume_col]
+
+    vpdf = apply_fill(vpdf, **kwargs)
+
+    # Name and Categorize it
+    vpdf.name = f"VP_{width}"
+    vpdf.category = "volume"
+
+    return vpdf
+
+
+vp.__doc__ = """Volume Profile (VP)
+
+Calculates the Volume Profile by slicing price into ranges.
+Note: Value Area is not calculated.
+
+Warning:
+    Not causal, and not a time series. The whole input is aggregated into price
+    bins, so every row of the result reflects the entire series including bars
+    that had not happened yet at any given point. Use it for analysis, never as
+    a backtest signal. Passing lookahead=False emits a UserWarning and returns
+    None, so a pipeline that asks for backtest-safe output does not silently
+    receive this one.
+
+Sources:
+    https://stockcharts.com/school/doku.php?id=chart_school:technical_indicators:volume_by_price
+    https://www.tradingview.com/wiki/Volume_Profile
+    http://www.ranchodinero.com/volume-tpo-essentials/
+    https://www.tradingtechnologies.com/blog/2013/05/15/volume-at-price/
+
+Calculation:
+    Default Inputs:
+        width=10
+
+    vp = pd.concat([close, pos_volume, neg_volume], axis=1)
+    if sort_close:
+        vp_ranges = cut(vp[close_col], width)
+        result = ({range_left, mean_close, range_right, pos_volume, neg_volume} foreach range in vp_ranges
+    else:
+        vp_ranges = np.array_split(vp, width)
+        result = ({low_close, mean_close, high_close, pos_volume, neg_volume} foreach range in vp_ranges
+    vpdf = pd.DataFrame(result)
+    vpdf['total_volume'] = vpdf['pos_volume'] + vpdf['neg_volume']
+
+Args:
+    close (pd.Series): Series of 'close's
+    volume (pd.Series): Series of 'volume's
+    width (int): How many ranges to distrubute price into. Default: 10
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+    sort_close (value, optional): Whether to sort by close before splitting
+        into ranges. Default: False
+
+Returns:
+    pd.DataFrame: New feature generated.
+"""

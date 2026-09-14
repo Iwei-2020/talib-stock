@@ -1,0 +1,75 @@
+# Volume Oscillator (VOSC)
+from typing import Any
+
+from pandas import Series
+
+from pandas_ta_classic.overlap.sma import sma
+from pandas_ta_classic.utils import apply_fill, apply_offset, get_offset, verify_series
+from pandas_ta_classic.utils._core import _pos_int, nan_on_short_input
+
+
+@nan_on_short_input
+def vosc(
+    volume: Series,
+    fast: int | None = None,
+    slow: int | None = None,
+    offset: int | None = None,
+    **kwargs: Any,
+) -> Series | None:
+    """Indicator: Volume Oscillator (VOSC)"""
+    # Validate Arguments
+    fast = _pos_int(fast, 14, "fast")
+    slow = _pos_int(slow, 28, "slow")
+    if fast > slow:
+        fast, slow = slow, fast
+    volume = verify_series(volume, slow)
+    offset = get_offset(offset)
+
+    if volume is None:
+        return None
+
+    # Calculate Result
+    fast_sma = sma(volume, length=fast)
+    slow_sma = sma(volume, length=slow)
+
+    if fast_sma is None or slow_sma is None:
+        return None
+
+    vosc_ = 100 * (fast_sma - slow_sma) / slow_sma
+
+    # Offset
+    vosc_ = apply_offset(vosc_, offset)
+
+    vosc_ = apply_fill(vosc_, **kwargs)
+
+    # Name and Categorize it
+    vosc_.name = f"VOSC_{fast}_{slow}"
+    vosc_.category = "volume"
+
+    return vosc_
+
+
+vosc.__doc__ = """Volume Oscillator (VOSC)
+
+The Volume Oscillator measures the difference between two volume moving
+averages (fast and slow SMAs) as a percentage of the slow SMA.
+Rising VOSC indicates increasing volume momentum.
+
+VOSC = 100 * (SMA(volume, fast) - SMA(volume, slow)) / SMA(volume, slow)
+
+Sources:
+    https://school.stockcharts.com/doku.php?id=technical_indicators:volume_oscillator_vo
+
+Args:
+    volume (pd.Series): Volume series.
+    fast (int): Fast SMA period. Default: 14
+    slow (int): Slow SMA period. Default: 28
+    offset (int): Result offset. Default: 0
+
+Kwargs:
+    fillna (value, optional): pd.DataFrame.fillna(value)
+    fill_method (value, optional): Type of fill method
+
+Returns:
+    pd.Series: VOSC values.
+"""

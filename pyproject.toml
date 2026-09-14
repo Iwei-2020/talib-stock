@@ -1,0 +1,257 @@
+[build-system]
+requires = ["setuptools>=61.0", "setuptools-scm>=8.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pandas-ta-classic"
+dynamic = ["version"]  # Version is dynamically determined from git tags
+description = "Technical Analysis Indicators - Pandas TA Classic is an easy to use Python 3 Pandas Extension with a comprehensive collection of indicators and TA-Lib patterns."
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "xgboosted"}
+]
+maintainers = [
+    {name = "xgboosted"}
+]
+keywords = ["technical analysis", "trading", "python3", "pandas"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Operating System :: OS Independent",
+    "Natural Language :: English",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Intended Audience :: Science/Research",
+    "Topic :: Office/Business :: Financial",
+    "Topic :: Office/Business :: Financial :: Investment",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    # Python version classifiers below are PLACEHOLDERS
+    # Replaced dynamically by CI/CD during release based on generate-matrix job
+    # Format: LATEST_PYTHON_VERSION and 4 preceding minor versions
+    "Programming Language :: Python :: {{LATEST-4}}",
+    "Programming Language :: Python :: {{LATEST-3}}",
+    "Programming Language :: Python :: {{LATEST-2}}",
+    "Programming Language :: Python :: {{LATEST-1}}",
+    "Programming Language :: Python :: {{LATEST}}",
+]
+requires-python = ">=3.10"  # Minimum Python version; matches AGENTS.md's rolling 5-version window (LATEST-4..LATEST)
+dependencies = [
+    "numpy>=2.0.0",
+    "pandas>=2.0.0",
+]
+
+[project.optional-dependencies]
+# Core optional runtime dependencies
+optional = [
+    "tqdm",
+]
+
+# External oracle library for parity tests.
+# tulipy (unmaintained; no wheels for CPython >=3.12) is NOT listed here: its
+# oracle values are frozen in tests/fixtures/tulipy_oracle.json and compared on
+# every Python version with no tulipy install. To regenerate that snapshot,
+# install tulipy manually on CPython <3.12 and run
+# tests/fixtures/generate_tulipy_oracle.py.
+oracle = [
+    "ta-lib>=0.6.8",
+]
+
+# CI code quality tools
+lint = [
+    "ruff>=0.16.0",
+    "black>=26.5.1",
+    "mypy>=1.0.0",
+]
+
+# PyPI publishing tools
+publish = [
+    "build>=0.10.0",
+    "twine>=4.0.0",
+    "setuptools-scm>=7.0.0",
+]
+
+# Development tools (code quality, linting, building)
+dev = [
+    # Include testing dependencies
+    "pandas-ta-classic[test]",
+    
+    # Include documentation dependencies  
+    "pandas-ta-classic[docs]",
+
+    # Include lint and publish tools
+    "pandas-ta-classic[lint]",
+    "pandas-ta-classic[publish]",
+    
+    # Type checking and linting
+    "mypy>=1.0.0",
+
+    # Pre-commit hooks
+    "pre-commit>=3.0.0",
+]
+
+# Testing framework
+test = [
+    "pytest>=7.0.0",
+    "hypothesis>=6.0.0"
+]
+
+# Documentation building
+docs = [
+    "sphinx>=5.0.0",
+    "sphinx-rtd-theme>=1.0.0",
+    "myst-parser>=2.0.0",
+    "matplotlib",
+    "mplfinance"
+]
+
+# Performance optimization
+performance = [
+    "numba>=0.58.0"
+]
+
+# Backtesting integrations (docs/examples only — not imported by the library)
+backtest = [
+    "backtesting",
+    "vectorbt",
+    "backtrader"
+]
+
+# Back-compat alias for the previous combined extra
+integration = [
+    "pandas-ta-classic[backtest]"
+]
+
+# Complete environment with all features.
+# Excludes `backtest`: it pulls unmaintained, platform-fragile packages
+# (backtrader, vectorbt) that break `[all]` installs on newer Python/OS
+# combos. Install it explicitly via `[backtest]` when needed.
+all = [
+    "pandas-ta-classic[optional,oracle,dev,test,docs,performance]"
+]
+
+[project.urls]
+Homepage = "https://github.com/xgboosted/pandas-ta-classic"
+Repository = "https://github.com/xgboosted/pandas-ta-classic.git"
+Documentation = "https://xgboosted.github.io/pandas-ta-classic/"
+"Bug Tracker" = "https://github.com/xgboosted/pandas-ta-classic/issues"
+
+[tool.pytest.ini_options]
+markers = [
+    "regression: snapshot regression tests — run with -m regression",
+]
+filterwarnings = [
+    "error::UserWarning:pandas_ta_classic",
+]
+
+[tool.black]
+line-length = 150
+skip-string-normalization = true
+exclude = '''
+/(
+    \.venv
+  | \.git
+  | __pycache__
+  | \.eggs
+  | .*\.egg-info
+)/
+'''
+
+[tool.ruff]
+exclude = [
+    ".venv",
+    ".git",
+    "__pycache__",
+    ".eggs",
+    "*.egg-info",
+]
+line-length = 150
+
+[tool.ruff.lint]
+# ruff's default rule set (floating with the `>=` pin) plus ICN. ICN001 enforces
+# the conventional aliases (numpy as np, pandas as pd); ICN003 with banned-from
+# rejects `from numpy import x`, so numpy is always reached through `np.`.
+extend-select = ["ICN"]
+
+[tool.ruff.lint.isort]
+# Keep `from x import a as b, c` on one line instead of one statement per alias.
+combine-as-imports = true
+
+[tool.ruff.lint.flake8-import-conventions]
+# pandas is deliberately not banned: `from pandas import Series` is the house
+# style in every indicator signature.
+banned-from = ["numpy", "numpy.lib.stride_tricks"]
+
+[tool.setuptools]
+packages = [
+    "pandas_ta_classic",
+    "pandas_ta_classic.candles",
+    "pandas_ta_classic.cycles",
+    "pandas_ta_classic.momentum",
+    "pandas_ta_classic.overlap",
+    "pandas_ta_classic.performance",
+    "pandas_ta_classic.statistics",
+    "pandas_ta_classic.trend",
+    "pandas_ta_classic.utils",
+    "pandas_ta_classic.volatility",
+    "pandas_ta_classic.volume"
+]
+
+[tool.setuptools_scm]
+# Automatically determine version from git tags
+# Tagged releases: X.Y.Z (e.g., 0.3.34)
+# Commits after tag: X.Y.(Z+1).devN (e.g., 0.3.35.dev1, 0.3.35.dev2)
+# This avoids .post0 on tagged commits while still tracking development versions
+write_to = "pandas_ta_classic/_version.py"
+# Default scheme: gives clean version on tags, next minor .devN after tags
+local_scheme = "no-local-version"  # Omit local version for clean releases
+fallback_version = "0.0.0"  # Fallback if not in a git repository
+
+[tool.mypy]
+packages = ["pandas_ta_classic"]
+# python_version is passed by `make typecheck` (--python-version 3.12). It is not
+# the 3.10 requires-python floor: numpy >= 2.5 stubs use PEP 695 `type`
+# statements that mypy cannot parse below 3.12. The testing-core matrix covers
+# runtime support for 3.10 and 3.11.
+warn_return_any = false
+warn_unused_configs = true
+disallow_untyped_defs = false
+check_untyped_defs = true
+no_implicit_optional = true
+strict_optional = true
+# Suppress false positives from pandas/numpy partial stubs.
+# - union-attr, operator, index: pandas methods like .diff()/.shift() are typed
+#   as returning Optional[Any] in pandas' built-in stubs (no py.typed marker),
+#   causing chained-operation errors that are not real bugs in our code.
+# - attr-defined: mypy reads core.pyi instead of core.py, and the stub does not
+#   declare Strategy / AllStrategy / CommonStrategy that __init__ imports from
+#   it; _indicator_loader also sets __signature__ on a functools.wraps wrapper.
+# - no-redef: each category __init__.py re-exports functions by name
+#   (e.g. `from .roc import roc`), which shadows the submodule of the same
+#   name. mypy sees this as a redefinition, but it works correctly at runtime.
+disable_error_code = ["union-attr", "operator", "no-redef", "index", "attr-defined"]
+
+# Third-party dependencies that ship no py.typed marker or are optional and absent
+# from the CI code-quality environment. Scoped instead of a blanket
+# ignore_missing_imports=true so a new, unhandled dependency is still reported.
+[[tool.mypy.overrides]]
+module = [
+    "pandas.*",
+    "numba",
+    "tulipy",
+]
+ignore_missing_imports = true
+
+# TA-Lib ships typed stubs, but its Function API is polymorphic at runtime
+# (Series in -> Series out) while the stubs declare every function as returning
+# ndarray unconditionally. mypy believes the stub, infers `result: ndarray` from
+# the talib branch, then reports false-positive assignment/arg-type errors when
+# the actual Series result flows through apply_offset/apply_fill. Skip following
+# talib's stubs so its symbols resolve to Any (we do not type-check talib itself).
+[[tool.mypy.overrides]]
+module = ["talib", "talib.*"]
+follow_imports = "skip"
+follow_imports_for_stubs = true
+# talib is optional and absent from the CI code-quality environment; resolve it
+# to Any there instead of reporting import-not-found at every deferred import.
+ignore_missing_imports = true
