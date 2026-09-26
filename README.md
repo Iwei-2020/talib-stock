@@ -4,7 +4,7 @@
  </a>
 </p>
 
-# Pandas TA Classic - Technical Analysis Library
+# Pandas TA Classic - 技术分析库
 
 [![License](https://img.shields.io/github/license/xgboosted/pandas-ta-classic?style=flat)](https://github.com/xgboosted/pandas-ta-classic/blob/main/LICENSE)
 [![Build Status](https://img.shields.io/github/actions/workflow/status/xgboosted/pandas-ta-classic/ci.yml?branch=main&style=flat)](https://github.com/xgboosted/pandas-ta-classic/actions/workflows/ci.yml)
@@ -18,240 +18,240 @@
 [![Dependents](https://img.shields.io/librariesio/dependents/pypi/pandas-ta-classic?style=flat)](https://libraries.io/pypi/pandas-ta-classic/dependents)
 [![Contributors](https://img.shields.io/github/contributors/xgboosted/pandas-ta-classic?style=flat)](https://github.com/xgboosted/pandas-ta-classic/graphs/contributors)
 
-![Example Chart](https://raw.githubusercontent.com/xgboosted/pandas-ta-classic/main/docs/images/TA_Chart.png)
+![示例图表](https://raw.githubusercontent.com/xgboosted/pandas-ta-classic/main/docs/images/TA_Chart.png)
 
-> **Pandas TA Classic** is an easy-to-use library that leverages the Pandas package with **224 indicators and utility functions** and **62 native candlestick patterns** (**284 total unique** — no TA-Lib required). Many commonly used indicators are included, such as: _Simple Moving Average_ (**sma**), _Moving Average Convergence Divergence_ (**macd**), _Hull Exponential Moving Average_ (**hma**), _Bollinger Bands_ (**bbands**), _On-Balance Volume_ (**obv**), _Aroon & Aroon Oscillator_ (**aroon**), _Squeeze_ (**squeeze**) and **many more**.
+> **Pandas TA Classic** 是一个易用的技术分析库，基于 Pandas 构建，提供 **224 个指标与工具函数** 和 **62 个原生 K 线形态**（共 **284 个唯一功能**，无需 TA-Lib）。常用指标包括：_简单移动平均线_（**sma**）、_移动平均收敛发散指标_（**macd**）、_Hull 指数移动平均线_（**hma**）、_布林带_（**bbands**）、_能量潮_（**obv**）、_Aroon 与 Aroon Oscillator_（**aroon**）、_Squeeze_（**squeeze**）等。
 
-This is the **classic/community maintained version** of the popular pandas-ta library.
+这是流行的 `pandas-ta` 库的 **经典版 / 社区维护版本**。
 
-## New to Pandas TA Classic?
+## 初次使用 Pandas TA Classic？
 
-**Get started quickly with our comprehensive guides:**
+**通过完整指南快速上手：**
 
-- **[Quickstart Guide](https://github.com/xgboosted/pandas-ta-classic/blob/main/docs/quickstart.md)** - Installation, your first indicators, and common workflows
-- **[Tutorials](https://github.com/xgboosted/pandas-ta-classic/blob/main/docs/tutorials.md)** - Step-by-step tutorials for real-world use cases:
- - Moving Average Crossover Strategy
- - Building Custom Indicator Strategies 
- - Backtesting with Performance Metrics
- - Integrating with backtesting.py
- - Integrating with backtrader
- - Integrating with VectorBT
- - Integrating with manifoldbt
- - Multi-Timeframe Analysis
- - Creating Custom Indicators
- - Candlestick Pattern Recognition
+- **[快速开始指南](https://github.com/xgboosted/pandas-ta-classic/blob/main/docs/quickstart.md)** - 安装、第一个指标和常见工作流
+- **[教程](https://github.com/xgboosted/pandas-ta-classic/blob/main/docs/tutorials.md)** - 面向真实场景的分步教程：
+ - 移动平均线交叉策略
+ - 构建自定义指标策略
+ - 使用性能指标进行回测
+ - 集成 backtesting.py
+ - 集成 backtrader
+ - 集成 VectorBT
+ - 集成 manifoldbt
+ - 多周期分析
+ - 创建自定义指标
+ - K 线形态识别
 
-**Complete documentation:** [**https://xgboosted.github.io/pandas-ta-classic/**](https://xgboosted.github.io/pandas-ta-classic/)
+**完整文档：** [**https://xgboosted.github.io/pandas-ta-classic/**](https://xgboosted.github.io/pandas-ta-classic/)
 
-### Key Features
+### 核心特性
 
-- **284 Unique Indicators & Patterns**: 224 Category indicators + 62 CDL patterns via `cdl_pattern()` = 284 unique (doji and inside appear in both counts; all CDL patterns use native Python — no TA-Lib required)
-- **All-Native Candlestick Patterns**: All 62 CDL patterns have native Python implementations — TA-Lib is never used for CDL patterns
-- **Optional TA-Lib Acceleration**: Core indicators (EMA, SMA, RSI, MACD, OBV, ATR, etc.) use native implementations by default; pass `talib=True` to use TA-Lib
-- **Compatibility Scope Is Explicit**: Not every TA-Lib/tulipy function has a pandas-ta-classic counterpart. See the full per‑indicator matrix for current coverage: `docs/indicator_support_matrix.rst`
-- **Optional Performance Boost**: Install `numba` for 6–230× speedups on hot-loop indicators (QQE, RSX, HWMA, SSF, PSAR, Supertrend, MCGD)
-- **Automatic Versioning**: Version management via git tags using setuptools-scm
-- **Modern Package Management**: Full support for both `uv` and `pip`
-- **Production Ready**: Stable status with comprehensive test coverage including property-based testing (Hypothesis)
-- **Active Development**: Regular updates with community contributions
+- **284 个唯一指标与形态**：224 个分类指标 + 通过 `cdl_pattern()` 提供的 62 个 CDL 形态 = 284 个唯一功能（`doji` 和 `inside` 会同时出现在两个统计口径中；所有 CDL 形态均使用原生 Python 实现，无需 TA-Lib）
+- **全原生 K 线形态**：全部 62 个 CDL 形态都提供原生 Python 实现，K 线形态永远不会依赖 TA-Lib
+- **可选 TA-Lib 加速**：核心指标（EMA、SMA、RSI、MACD、OBV、ATR 等）默认使用原生实现；传入 `talib=True` 可使用 TA-Lib
+- **明确的兼容范围**：并非所有 TA-Lib / tulipy 函数都有 pandas-ta-classic 对应实现。当前覆盖情况请查看完整指标矩阵：`docs/indicator_support_matrix.rst`
+- **可选性能增强**：安装 `numba` 后，可让热点循环指标获得 6–230 倍加速（QQE、RSX、HWMA、SSF、PSAR、Supertrend、MCGD）
+- **自动版本管理**：通过 git tag 和 setuptools-scm 管理版本
+- **现代包管理支持**：完整支持 `uv` 和 `pip`
+- **生产可用**：状态稳定，并包含基于 Hypothesis 的属性测试等完整测试覆盖
+- **持续维护**：定期更新并接受社区贡献
 
-## Quick Start
+## 快速开始
 
-### Installation
+### 安装
 
-The library supports both modern **uv** and traditional **pip** package managers.
+该库同时支持现代包管理器 **uv** 和传统 **pip**。
 
-**Stable Release**
+**稳定版本**
 
-Using `uv` (recommended - faster):
+使用 `uv`（推荐，速度更快）：
 ```bash
 uv pip install pandas-ta-classic
 ```
 
-Using `pip`:
+使用 `pip`：
 ```bash
 pip install pandas-ta-classic
 ```
 
-**Latest Version**
+**最新版本**
 
-Using `uv`:
+使用 `uv`：
 ```bash
 uv pip install git+https://github.com/xgboosted/pandas-ta-classic
 ```
 
-Using `pip`:
+使用 `pip`：
 ```bash
 pip install -U git+https://github.com/xgboosted/pandas-ta-classic
 ```
 
-**Development Installation**
+**开发环境安装**
 
-Using `uv`:
+使用 `uv`：
 ```bash
-# Clone the repository
+# 克隆仓库
 git clone https://github.com/xgboosted/pandas-ta-classic.git
 cd pandas-ta-classic
 
-# Install with all core dependencies (excludes the platform-fragile
-# backtest extra — install it explicitly if needed)
+# 安装全部核心依赖（不包含对平台较敏感的 backtest extra，
+# 如有需要请单独安装）
 uv pip install -e ".[all]"
 
-# Or install specific dependency groups:
-uv pip install -e ".[dev]" # Development tools
-uv pip install -e ".[optional]" # Optional runtime features
-uv pip install -e ".[oracle]" # Oracle parity lib: TA-Lib
-uv pip install -e ".[backtest]" # Backtesting: backtesting, vectorbt, backtrader
+# 或安装指定依赖组：
+uv pip install -e ".[dev]" # 开发工具
+uv pip install -e ".[optional]" # 可选运行时功能
+uv pip install -e ".[oracle]" # Oracle 对齐库：TA-Lib
+uv pip install -e ".[backtest]" # 回测：backtesting、vectorbt、backtrader
 ```
 
-Using `pip`:
+使用 `pip`：
 ```bash
-# Clone the repository
+# 克隆仓库
 git clone https://github.com/xgboosted/pandas-ta-classic.git
 cd pandas-ta-classic
 
-# Install with all core dependencies (excludes the platform-fragile
-# backtest extra — install it explicitly if needed)
+# 安装全部核心依赖（不包含对平台较敏感的 backtest extra，
+# 如有需要请单独安装）
 pip install -e ".[all]"
 
-# Or install specific dependency groups:
-pip install -e ".[dev]" # Development tools
-pip install -e ".[optional]" # Optional runtime features
-pip install -e ".[oracle]" # Oracle parity lib: TA-Lib
-pip install -e ".[backtest]" # Backtesting: backtesting, vectorbt, backtrader
+# 或安装指定依赖组：
+pip install -e ".[dev]" # 开发工具
+pip install -e ".[optional]" # 可选运行时功能
+pip install -e ".[oracle]" # Oracle 对齐库：TA-Lib
+pip install -e ".[backtest]" # 回测：backtesting、vectorbt、backtrader
 ```
 
-### Basic Usage
+### 基础用法
 
 ```python
 import pandas as pd
 import pandas_ta_classic as ta
 
-# Load your data
+# 加载你的数据
 df = pd.read_csv("path/to/symbol.csv")
-# OR fetch OHLCV with yfinance directly (pandas-ta-classic does not fetch data;
-# see examples/fetch_market_data.py):
+# 或直接使用 yfinance 获取 OHLCV 数据（pandas-ta-classic 本身不负责获取数据；
+# 可参考 examples/fetch_market_data.py）：
 # import yfinance as yf
 # df = yf.download("AAPL", period="1y")
 
-# Calculate indicators
-df.ta.sma(length=20, append=True) # Simple Moving Average
-df.ta.rsi(append=True) # Relative Strength Index 
+# 计算指标
+df.ta.sma(length=20, append=True) # 简单移动平均线
+df.ta.rsi(append=True) # 相对强弱指数
 df.ta.macd(append=True) # MACD
-df.ta.bbands(append=True) # Bollinger Bands
+df.ta.bbands(append=True) # 布林带
 
-# Fluent API chaining (v0.6+)
+# 链式 API（v0.6+）
 df.ta.chain().sma(20).ta.rsi(14).ta.macd().ta.bbands(20)
 
-# Or run a strategy with multiple indicators
-df.ta.strategy("CommonStrategy") # Runs commonly used indicators
+# 或运行包含多个指标的策略
+df.ta.strategy("CommonStrategy") # 运行常用指标集合
 ```
 
-## Features
+## 功能
 
-- **224 Technical Indicators & Utilities** across 10 categories (Candles, Cycles, Math, Momentum, Overlap, Trend, Volume, etc.)
-- **62 Native Candlestick Patterns** — all patterns natively implemented, no TA-Lib required
-- **284 Unique Indicators & Patterns** - 224 category indicators plus 62 CDL patterns via `cdl_pattern()`
-- **Dynamic Category Discovery** - automatically detects all available indicators from the filesystem
-- **Optional Numba Acceleration** - 6–230× speedups via `pip install pandas-ta-classic[performance]`
-- **Strategy System** with multiprocessing support for bulk indicator processing
-- **Fluent API Chaining**: ``df.ta.chain().sma(20).ta.rsi(14).ta.macd().ta.bbands(20)`` — chain multiple indicators in a single expression
-- **Pandas DataFrame Extension** for seamless integration (`df.ta.<indicator>()`, e.g. `df.ta.rsi()`)
-- **TA-Lib Integration (dual-role)** - **(1) acceleration backend**: core indicators use native implementations by default; pass `talib=True` to use TA-Lib's C implementation. **(2) oracle**: `test_oracle_talib.py` verifies parity against TA-Lib
-- **tulipy Integration (frozen oracle only)** - `test_oracle_tulipy.py` verifies native output against a committed golden snapshot of tulipy's output (`tests/fixtures/tulipy_oracle.json`); tulipy itself is no longer installed at test time, only to regenerate the snapshot; never used as a computation backend
-- **Backtesting.py Integration** — bridge function and runnable SMA crossover example in ``examples/backtesting_py_strategy.py``
-- **backtrader Integration** — precompute-then-feed pattern with dynamic `PandasData` subclass; runnable example in ``examples/backtrader_strategy.py``
-- **Vectorbt Integration** - compatible with popular backtesting framework
-- **manifoldbt Integration** - precompute-then-register pattern using exogenous series; runnable example in ``examples/manifoldbt_strategy.py``
-- **Custom Indicators** - easily create and chain your own indicators
+- **224 个技术指标与工具函数**，覆盖 10 个分类（Candles、Cycles、Math、Momentum、Overlap、Trend、Volume 等）
+- **62 个原生 K 线形态**，全部原生实现，无需 TA-Lib
+- **284 个唯一指标与形态**：224 个分类指标 + 通过 `cdl_pattern()` 提供的 62 个 CDL 形态
+- **动态分类发现**：自动从文件系统中检测所有可用指标
+- **可选 Numba 加速**：通过 `pip install pandas-ta-classic[performance]` 获得 6–230 倍加速
+- **策略系统**：支持多进程批量处理指标
+- **链式 API**：``df.ta.chain().sma(20).ta.rsi(14).ta.macd().ta.bbands(20)``，可在单个表达式中串联多个指标
+- **Pandas DataFrame 扩展**：可无缝使用 `df.ta.<indicator>()`，例如 `df.ta.rsi()`
+- **TA-Lib 集成（双重角色）**：**(1) 加速后端**：核心指标默认使用原生实现；传入 `talib=True` 可使用 TA-Lib 的 C 实现。**(2) Oracle 校验**：`test_oracle_talib.py` 用于验证与 TA-Lib 的一致性
+- **tulipy 集成（仅冻结 Oracle）**：`test_oracle_tulipy.py` 会基于已提交的 tulipy 输出快照（`tests/fixtures/tulipy_oracle.json`）验证原生输出；测试时不再安装 tulipy，也不会把 tulipy 作为计算后端
+- **Backtesting.py 集成**：提供桥接函数和可运行的 SMA 交叉示例：``examples/backtesting_py_strategy.py``
+- **backtrader 集成**：采用预计算后再输入的模式，并包含动态 `PandasData` 子类；可运行示例见 ``examples/backtrader_strategy.py``
+- **Vectorbt 集成**：兼容流行的回测框架
+- **manifoldbt 集成**：采用预计算后注册外生序列的模式；可运行示例见 ``examples/manifoldbt_strategy.py``
+- **自定义指标**：可以轻松创建并链式调用自定义指标
 
-## Documentation
+## 文档
 
-**Complete documentation is available at:** [**https://xgboosted.github.io/pandas-ta-classic/**](https://xgboosted.github.io/pandas-ta-classic/)
+**完整文档地址：** [**https://xgboosted.github.io/pandas-ta-classic/**](https://xgboosted.github.io/pandas-ta-classic/)
 
-### Learning Resources
+### 学习资源
 
-**Start Here:**
-- [**Quickstart Guide**](https://github.com/xgboosted/pandas-ta-classic/blob/main/docs/quickstart.md) - Get up and running in minutes
-- [**Tutorials**](https://github.com/xgboosted/pandas-ta-classic/blob/main/docs/tutorials.md) - Step-by-step guides for common workflows
-- [**Examples**](https://github.com/xgboosted/pandas-ta-classic/tree/main/examples) - Jupyter notebooks with real examples
+**从这里开始：**
+- [**快速开始指南**](https://github.com/xgboosted/pandas-ta-classic/blob/main/docs/quickstart.md) - 几分钟内完成上手
+- [**教程**](https://github.com/xgboosted/pandas-ta-classic/blob/main/docs/tutorials.md) - 常见工作流的分步指南
+- [**示例**](https://github.com/xgboosted/pandas-ta-classic/tree/main/examples) - 包含真实示例的 Jupyter Notebook
 
-**Reference Documentation:**
-- [**Usage Guide**](https://xgboosted.github.io/pandas-ta-classic/usage.html) - Programming conventions and basic usage
-- [**Strategy System**](https://xgboosted.github.io/pandas-ta-classic/strategies.html) - Multiprocessing and bulk indicator processing 
-- [**Indicators Reference**](https://xgboosted.github.io/pandas-ta-classic/indicators.html) - Complete list of 224 indicators plus 62 CDL patterns (284 unique total)
-- [**DataFrame API**](https://xgboosted.github.io/pandas-ta-classic/dataframe_api.html) - Properties and methods reference
-- [**Performance Metrics**](https://xgboosted.github.io/pandas-ta-classic/performance.html) - Backtesting and performance analysis
+**参考文档：**
+- [**使用指南**](https://xgboosted.github.io/pandas-ta-classic/usage.html) - 编程约定与基础用法
+- [**策略系统**](https://xgboosted.github.io/pandas-ta-classic/strategies.html) - 多进程与批量指标处理
+- [**指标参考**](https://xgboosted.github.io/pandas-ta-classic/indicators.html) - 224 个指标与 62 个 CDL 形态的完整列表（共 284 个唯一功能）
+- [**DataFrame API**](https://xgboosted.github.io/pandas-ta-classic/dataframe_api.html) - 属性与方法参考
+- [**性能指标**](https://xgboosted.github.io/pandas-ta-classic/performance.html) - 回测与绩效分析
 
-## Python Version Support
+## Python 版本支持
 
-**Pandas TA Classic** follows a **rolling support policy** for the latest stable Python version plus 4 preceding minor versions.
+**Pandas TA Classic** 采用 **滚动支持策略**：支持最新稳定 Python 版本及其前 4 个 minor 版本。
 
-> **Note:** Python version support is **dynamically managed** via CI/CD workflows. When new Python versions are released, the library automatically updates to support the latest 5 minor versions. Check the [CI workflow](https://github.com/xgboosted/pandas-ta-classic/blob/main/.github/workflows/ci.yml) `LATEST_PYTHON_VERSION` for the current configuration.
+> **注意：** Python 版本支持通过 CI/CD 工作流动态管理。新 Python 版本发布后，库会自动更新以支持最新 5 个 minor 版本。请查看 [CI workflow](https://github.com/xgboosted/pandas-ta-classic/blob/main/.github/workflows/ci.yml) 中的 `LATEST_PYTHON_VERSION` 获取当前配置。
 
-**TA-Lib and tulipy serve different roles** — both are fully optional and skip gracefully when not installed.
+**TA-Lib 和 tulipy 扮演不同角色**，两者都是完全可选依赖；未安装时会自动跳过相关能力。
 
-| Library | Role | Effect when installed |
+| 库 | 角色 | 安装后的效果 |
 |---------|------|-----------------------|
-| TA-Lib | **Acceleration backend + live oracle** | Core indicators — native by default, opt-in via `talib=True`; also used live in `test_oracle_talib.py` for parity checks |
-| tulipy | **Frozen oracle only** | Not a computation backend and not installed at test time; `test_oracle_tulipy.py` compares against a committed golden snapshot of tulipy's output. tulipy is only needed to *regenerate* that snapshot (CPython <3.12) |
+| TA-Lib | **加速后端 + 实时 Oracle** | 核心指标默认原生实现，可通过 `talib=True` 启用；同时在 `test_oracle_talib.py` 中用于实时一致性校验 |
+| tulipy | **仅冻结 Oracle** | 不是计算后端，测试时也不会安装；`test_oracle_tulipy.py` 会与已提交的 tulipy 输出快照进行比较。只有重新生成该快照时才需要 tulipy（CPython <3.12） |
 
-| Area | Behaviour without TA-Lib | Behaviour with TA-Lib |
+| 领域 | 未安装 TA-Lib 时 | 安装 TA-Lib 后 |
 |------|--------------------------|----------------------|
-| CDL patterns (62) | Native Python — always used | Still native — TA-Lib **never** used for patterns |
-| Core indicators (59) | Native Python (default) | TA-Lib available via `talib=True` |
+| CDL 形态（62 个） | 原生 Python，始终可用 | 仍然使用原生实现，TA-Lib **永远不会** 用于 K 线形态 |
+| 核心指标（59 个） | 原生 Python（默认） | 可通过 `talib=True` 使用 TA-Lib |
 
 ```python
-# CDL patterns — always native, no TA-Lib needed
-df.ta.cdl_pattern(name="all") # run all 62 patterns
-df.ta.cdl_pattern(name="engulfing") # individual pattern
+# CDL 形态：始终使用原生实现，无需 TA-Lib
+df.ta.cdl_pattern(name="all") # 运行全部 62 个形态
+df.ta.cdl_pattern(name="engulfing") # 运行单个形态
 
-# Core indicators — native by default
-df.ta.ema(length=20) # native implementation
-df.ta.ema(length=20, talib=True) # use TA-Lib
+# 核心指标：默认使用原生实现
+df.ta.ema(length=20) # 原生实现
+df.ta.ema(length=20, talib=True) # 使用 TA-Lib
 ```
 
-Installing oracle libraries:
+安装 Oracle 库：
 ```bash
 # uv
-uv pip install pandas-ta-classic[oracle] # installs TA-Lib (the live oracle)
-uv pip install TA-Lib # TA-Lib only (also enables acceleration backend)
+uv pip install pandas-ta-classic[oracle] # 安装 TA-Lib（实时 Oracle）
+uv pip install TA-Lib # 仅安装 TA-Lib（同时启用加速后端）
 # pip
-pip install pandas-ta-classic[oracle] # installs TA-Lib (the live oracle)
-pip install TA-Lib # TA-Lib only (also enables acceleration backend)
-# tulipy is only needed to regenerate the frozen oracle snapshot (CPython <3.12):
+pip install pandas-ta-classic[oracle] # 安装 TA-Lib（实时 Oracle）
+pip install TA-Lib # 仅安装 TA-Lib（同时启用加速后端）
+# tulipy 仅在重新生成冻结 Oracle 快照时需要（CPython <3.12）：
 pip install tulipy && python tests/fixtures/generate_tulipy_oracle.py
 ```
 
-> **Note:** `test_oracle_talib.py` skips automatically (`@unittest.skipUnless`) when TA-Lib is not installed. `test_oracle_tulipy.py` runs on every Python version against the committed `tulipy_oracle.json` snapshot (skips only if that fixture is missing) — it does **not** require tulipy installed. Neither is required for normal use. Installing TA-Lib additionally enables C-library acceleration for core indicators via `talib=True`.
+> **注意：** 未安装 TA-Lib 时，`test_oracle_talib.py` 会自动跳过（`@unittest.skipUnless`）。`test_oracle_tulipy.py` 会在每个 Python 版本上基于已提交的 `tulipy_oracle.json` 快照运行（仅当该 fixture 缺失时跳过），不要求安装 tulipy。正常使用不需要安装二者。安装 TA-Lib 后，还可以通过 `talib=True` 为核心指标启用 C 库加速。
 
-**Performance boost:** Install `numba` for 6–230× speedups on computation-heavy indicators:
-- Using `uv`: `uv pip install pandas-ta-classic[performance]`
-- Using `pip`: `pip install pandas-ta-classic[performance]`
+**性能增强：** 安装 `numba` 可为计算密集型指标带来 6–230 倍加速：
+- 使用 `uv`：`uv pip install pandas-ta-classic[performance]`
+- 使用 `pip`：`pip install pandas-ta-classic[performance]`
 
-## Contributing
+## 贡献
 
-We welcome contributions! Please see our [contributing guidelines](https://github.com/xgboosted/pandas-ta-classic/blob/main/CONTRIBUTING.md) and [issues page](https://github.com/xgboosted/pandas-ta-classic/issues).
+欢迎贡献代码！请查看 [贡献指南](https://github.com/xgboosted/pandas-ta-classic/blob/main/CONTRIBUTING.md) 和 [Issues 页面](https://github.com/xgboosted/pandas-ta-classic/issues)。
 
-### Reporting Issues
-- Check [existing issues](https://github.com/xgboosted/pandas-ta-classic/issues) first
-- Provide reproducible code examples 
-- Include relevant error messages and data samples
+### 问题反馈
+- 请先检查 [已有 Issues](https://github.com/xgboosted/pandas-ta-classic/issues)
+- 提供可复现的代码示例
+- 附上相关错误信息和数据样例
 
-## Changelog
+## 更新日志
 
-For detailed information about changes, improvements, and new features, please see the [CHANGELOG.md](https://github.com/xgboosted/pandas-ta-classic/blob/main/CHANGELOG.md) file.
+详细的变更、改进和新功能请查看 [CHANGELOG.md](https://github.com/xgboosted/pandas-ta-classic/blob/main/CHANGELOG.md)。
 
-## Sources
+## 来源
 
 [Original TA-LIB](http://ta-lib.org/) | [TradingView](http://www.tradingview.com) | [Sierra Chart](https://search.sierrachart.com/?Query=indicators&submitted=true) | [MQL5](https://www.mql5.com) | [FM Labs](https://www.fmlabs.com/reference/default.htm) | [Pro Real Code](https://www.prorealcode.com/prorealtime-indicators) | [User 42](https://user42.tuxfamily.org/chart/manual/index.html)
 
-## Support
+## 支持
 
-If you find this library helpful, please consider:
+如果你觉得这个库有帮助，可以考虑支持项目：
 
 [![Sponsor](https://img.shields.io/static/v1?label=Sponsor&message=%E2%9D%A4&logo=GitHub&color=%23fe8e86)](https://github.com/sponsors/xgboosted)
 
-## License
+## 许可证
 
-This project is licensed under the MIT License - see the [LICENSE](https://github.com/xgboosted/pandas-ta-classic/blob/main/LICENSE) file for details.
+本项目基于 MIT License 开源，详情请查看 [LICENSE](https://github.com/xgboosted/pandas-ta-classic/blob/main/LICENSE) 文件。
